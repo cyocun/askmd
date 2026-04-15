@@ -11,3 +11,8 @@
 ## ステータス
 
 Phase 1 (MVP) 実装中。
+
+## ドキュメント
+
+- [docs/CONCEPT.md](docs/CONCEPT.md) — プロジェクトの背景・設計思想・既存ツール比較・意思決定の記録
+- [CLAUDE.md](CLAUDE.md) — コード規約 / AI 協働ノート
