@@ -82,6 +82,8 @@ export function createPalette(onSelect: (node: TreeNode) => void): Palette {
 
   input.addEventListener('input', update);
   input.addEventListener('keydown', (ev) => {
+    // IME 変換中は Enter/Escape をスキップ (変換確定の Enter で誤ってファイルを開かないため)
+    const composing = ev.isComposing || ev.keyCode === 229;
     if (ev.key === 'ArrowDown') {
       ev.preventDefault();
       activeIdx = Math.min(filtered.length - 1, activeIdx + 1);
@@ -90,14 +92,14 @@ export function createPalette(onSelect: (node: TreeNode) => void): Palette {
       ev.preventDefault();
       activeIdx = Math.max(0, activeIdx - 1);
       redraw();
-    } else if (ev.key === 'Enter') {
+    } else if (ev.key === 'Enter' && !composing) {
       ev.preventDefault();
       const pick = filtered[activeIdx];
       if (pick) {
         onSelect(pick);
         close();
       }
-    } else if (ev.key === 'Escape') {
+    } else if (ev.key === 'Escape' && !composing) {
       close();
     }
   });

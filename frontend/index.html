@@ -23,41 +23,32 @@
   <link rel="stylesheet" href="styles/app.css">
 </head>
 <body>
+  <!-- タイトルバー (macOS traffic light の領域、全幅ドラッグ可能) -->
+  <div id="titleBar"></div>
+
   <!-- 左ペイン: ツリー -->
   <aside id="leftPane">
-    <div class="drag-region"></div>
     <div id="searchBar">
-      <input id="filterInput" type="text" placeholder="/ でファイル絞り込み" spellcheck="false" autocomplete="off">
+      <input id="filterInput" type="text" placeholder="@ でファイル絞り込み" spellcheck="false" autocomplete="off">
     </div>
     <div id="rootLabel"></div>
-    <div id="treeContainer"></div>
+    <div id="treeContainer" tabindex="0"></div>
     <div id="leftFooter">
       <button id="openBtn" class="btn-ghost">ディレクトリを開く…</button>
     </div>
   </aside>
 
-  <!-- 右ペイン: レンダリング結果 + 質問パネル -->
+  <!-- 右ペイン: レンダリング結果 -->
   <section id="rightPane">
-    <div class="drag-region"></div>
     <header id="docHeader"></header>
-    <main id="docContent">
+    <main id="docContent" tabindex="0">
       <div id="emptyState">
         <h1>askmd</h1>
-        <p>左のツリーから <code>.md</code> を選ぶか、<kbd>⌘</kbd><kbd>O</kbd> でディレクトリを開いてください。</p>
+        <p class="empty-sub">Markdown だけを、静かに速く。</p>
+        <button id="openBtnLarge" class="btn-primary btn-large">ディレクトリを開く…</button>
+        <p class="empty-hint">フォルダをこのウィンドウにドロップしても OK <span class="empty-sep">/</span> <kbd>⌘</kbd><kbd>O</kbd></p>
       </div>
     </main>
-    <div id="askPanel" hidden>
-      <div id="askHeader">
-        <span id="askLabel">選択範囲を Claude に質問</span>
-        <button id="askClose" class="btn-ghost" title="閉じる">×</button>
-      </div>
-      <div id="askQuote"></div>
-      <div id="askInputRow">
-        <input id="askInput" type="text" placeholder="何を聞きますか?" spellcheck="false">
-        <button id="askSend" class="btn-primary">送信</button>
-      </div>
-      <div id="askAnswer"></div>
-    </div>
   </section>
 
   <!-- Cmd+P クイックスイッチャー -->
@@ -68,7 +59,26 @@
     </div>
   </div>
 
+  <!-- Cmd+F 全文横断検索 -->
+  <div id="searchOverlay" hidden>
+    <div id="searchBox">
+      <input id="searchInput" type="text" placeholder="全文検索: 読み込んでいる .md を横断" spellcheck="false" autocomplete="off">
+      <div id="searchStatus"></div>
+      <div id="searchResults"></div>
+    </div>
+  </div>
+
   <div id="toast" hidden></div>
+
+  <!-- ドラッグ中のフルスクリーンオーバーレイ -->
+  <div id="dropOverlay" hidden>
+    <div id="dropOverlayInner">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M5 4h4l3 3h7a2 2 0 0 1 2 2v8a2 2 0 0 1 -2 2h-14a2 2 0 0 1 -2 -2v-11a2 2 0 0 1 2 -2"/>
+      </svg>
+      <p>ここにフォルダをドロップ</p>
+    </div>
+  </div>
 
   <script type="module" src="js/app.js"></script>
 </body>

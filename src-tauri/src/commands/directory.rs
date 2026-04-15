@@ -1,4 +1,6 @@
 use serde::{Deserialize, Serialize};
+use std::fs;
+use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 use tauri::AppHandle;
 use tauri_plugin_dialog::DialogExt;
@@ -8,6 +10,9 @@ pub struct TreeNode {
     pub name: String,
     pub path: String,
     pub is_dir: bool,
+    // .md ファイルの場合のみ入る。frontmatter の title: か最初の `# ` 見出し。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
     pub children: Option<Vec<TreeNode>>,
 }
 
@@ -18,6 +23,52 @@ fn should_skip_dir(name: &str) -> bool {
             name,
             "node_modules" | "target" | "dist" | "build" | "vendor" | ".git"
         )
+}
+
+// ファイル先頭 100 行を読み、frontmatter title か最初の `# 見出し` を返す。
+// 見つからなければ None。I/O エラーも None。
+fn extract_title(path: &Path) -> Option<String> {
+    let file = fs::File::open(path).ok()?;
+    let reader = BufReader::new(file);
+    let mut in_fm = false;
+    let mut fm_checked_first = false;
+    for (idx, line_res) in reader.lines().enumerate().take(100) {
+        let Ok(line) = line_res else { break; };
+        // 1 行目: `---` なら frontmatter 開始
+        if idx == 0 && line.trim() == "---" {
+            in_fm = true;
+            fm_checked_first = true;
+            continue;
+        }
+        if !fm_checked_first {
+            fm_checked_first = true;
+        }
+        if in_fm {
+            if line.trim() == "---" {
+                in_fm = false;
+                continue;
+            }
+            // title: の行を拾う
+            if let Some(rest) = line.strip_prefix("title:") {
+                let t = rest
+                    .trim()
+                    .trim_matches(|c| c == '"' || c == '\'')
+                    .to_string();
+                if !t.is_empty() {
+                    return Some(t);
+                }
+            }
+            continue;
+        }
+        // 本文内の最初の H1
+        if let Some(rest) = line.strip_prefix("# ") {
+            let t = rest.trim().to_string();
+            if !t.is_empty() {
+                return Some(t);
+            }
+        }
+    }
+    None
 }
 
 fn scan(path: &Path) -> Option<TreeNode> {
@@ -31,6 +82,7 @@ fn scan(path: &Path) -> Option<TreeNode> {
                 name,
                 path: path_str,
                 is_dir: false,
+                title: extract_title(path),
                 children: None,
             });
         }
@@ -61,6 +113,7 @@ fn scan(path: &Path) -> Option<TreeNode> {
         name,
         path: path_str,
         is_dir: true,
+        title: None,
         children: Some(children),
     })
 }
@@ -86,4 +139,42 @@ pub async fn pick_directory(app: AppHandle) -> Option<String> {
         let _ = tx.send(result);
     });
     rx.await.ok().flatten()
+}
+
+// 削除前にファイル内容を読み取り、trash に移動する。
+// 戻り値はファイル内容 (Undo で書き戻すため)。
+#[tauri::command]
+pub async fn trash_file(path: String) -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let p = PathBuf::from(&path);
+        if !p.is_file() {
+            return Err(format!("ファイルが見つかりません: {}", path));
+        }
+        let content = fs::read_to_string(&p)
+            .map_err(|e| format!("ファイルの読み取りに失敗: {}", e))?;
+        trash::delete(&p).map_err(|e| format!("ゴミ箱への移動に失敗: {}", e))?;
+        Ok(content)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+// Undo: メモリスタックに残した path に内容を書き戻す。
+// 親ディレクトリが無ければ作る (稀にディレクトリごと消えてるケース)。
+#[tauri::command]
+pub async fn restore_file(path: String, content: String) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let p = PathBuf::from(&path);
+        if let Some(parent) = p.parent() {
+            if !parent.exists() {
+                fs::create_dir_all(parent)
+                    .map_err(|e| format!("親ディレクトリ作成に失敗: {}", e))?;
+            }
+        }
+        fs::write(&p, content.as_bytes())
+            .map_err(|e| format!("書き戻しに失敗: {}", e))?;
+        Ok(())
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
