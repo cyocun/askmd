@@ -1,0 +1,15 @@
+{
+  "identifier": "default",
+  "description": "Default capabilities",
+  "windows": ["*"],
+  "permissions": [
+    "core:default",
+    "core:window:allow-start-dragging",
+    "core:window:allow-set-min-size",
+    "core:webview:allow-create-webview-window",
+    "window-state:default",
+    "dialog:default",
+    "core:path:default",
+    "core:event:default"
+  ]
+}

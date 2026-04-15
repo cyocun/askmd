@@ -1,0 +1,21 @@
+{
+  "name": "askmd",
+  "version": "0.1.0",
+  "description": ".md に絞った軽量ビューア + 選択範囲を Claude CLI に質問できる GUI",
+  "scripts": {
+    "build:frontend": "tsc -p tsconfig.json",
+    "tauri": "npm run build:frontend && tauri",
+    "tauri:dev": "npm run build:frontend && tauri dev",
+    "tauri:build": "npm run build:frontend && tauri build",
+    "check:types": "tsc -p tsconfig.json --noEmit"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/cyocun/askmd.git"
+  },
+  "license": "MIT",
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.10.1",
+    "typescript": "^5.9.3"
+  }
+}

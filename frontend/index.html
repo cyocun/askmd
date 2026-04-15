@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <title>askmd</title>
+  <script src="vendor/markdown-it.min.js"></script>
+  <script src="vendor/purify.min.js"></script>
+  <link rel="stylesheet" href="vendor/github-dark-dimmed.min.css" id="hljs-theme-dark">
+  <link rel="stylesheet" href="vendor/hljs-github.min.css" id="hljs-theme-light" disabled>
+  <script src="vendor/highlight.min.js"></script>
+  <script src="vendor/hljs-bash.min.js"></script>
+  <script src="vendor/hljs-javascript.min.js"></script>
+  <script src="vendor/hljs-typescript.min.js"></script>
+  <script src="vendor/hljs-python.min.js"></script>
+  <script src="vendor/hljs-json.min.js"></script>
+  <script src="vendor/hljs-yaml.min.js"></script>
+  <script src="vendor/hljs-css.min.js"></script>
+  <script src="vendor/hljs-xml.min.js"></script>
+  <script src="vendor/hljs-diff.min.js"></script>
+  <script src="vendor/hljs-sql.min.js"></script>
+  <link rel="stylesheet" href="styles/app.css">
+</head>
+<body>
+  <!-- 左ペイン: ツリー -->
+  <aside id="leftPane">
+    <div class="drag-region"></div>
+    <div id="searchBar">
+      <input id="filterInput" type="text" placeholder="/ でファイル絞り込み" spellcheck="false" autocomplete="off">
+    </div>
+    <div id="rootLabel"></div>
+    <div id="treeContainer"></div>
+    <div id="leftFooter">
+      <button id="openBtn" class="btn-ghost">ディレクトリを開く…</button>
+    </div>
+  </aside>
+
+  <!-- 右ペイン: レンダリング結果 + 質問パネル -->
+  <section id="rightPane">
+    <div class="drag-region"></div>
+    <header id="docHeader"></header>
+    <main id="docContent">
+      <div id="emptyState">
+        <h1>askmd</h1>
+        <p>左のツリーから <code>.md</code> を選ぶか、<kbd>⌘</kbd><kbd>O</kbd> でディレクトリを開いてください。</p>
+      </div>
+    </main>
+    <div id="askPanel" hidden>
+      <div id="askHeader">
+        <span id="askLabel">選択範囲を Claude に質問</span>
+        <button id="askClose" class="btn-ghost" title="閉じる">×</button>
+      </div>
+      <div id="askQuote"></div>
+      <div id="askInputRow">
+        <input id="askInput" type="text" placeholder="何を聞きますか?" spellcheck="false">
+        <button id="askSend" class="btn-primary">送信</button>
+      </div>
+      <div id="askAnswer"></div>
+    </div>
+  </section>
+
+  <!-- Cmd+P クイックスイッチャー -->
+  <div id="paletteOverlay" hidden>
+    <div id="palette">
+      <input id="paletteInput" type="text" placeholder="ファイル名で検索…" spellcheck="false">
+      <div id="paletteList"></div>
+    </div>
+  </div>
+
+  <div id="toast" hidden></div>
+
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
