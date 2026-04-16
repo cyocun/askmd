@@ -7,8 +7,13 @@
   <title>askmd</title>
   <script src="vendor/markdown-it.min.js"></script>
   <script src="vendor/purify.min.js"></script>
-  <link rel="stylesheet" href="vendor/github-dark-dimmed.min.css" id="hljs-theme-dark">
-  <link rel="stylesheet" href="vendor/hljs-github.min.css" id="hljs-theme-light" disabled>
+  <script src="vendor/mermaid.min.js"></script>
+  <script src="vendor/katex.min.js"></script>
+  <link rel="stylesheet" href="vendor/katex.min.css">
+  <link rel="stylesheet" href="vendor/hljs-github.min.css" id="hljs-theme-light">
+  <link rel="stylesheet" href="vendor/github-dark-dimmed.min.css" id="hljs-theme-dark" disabled>
+  <link rel="stylesheet" href="vendor/hljs-solarized-light.min.css" id="hljs-theme-solarized-light" disabled>
+  <link rel="stylesheet" href="vendor/hljs-solarized-dark.min.css" id="hljs-theme-solarized-dark" disabled>
   <script src="vendor/highlight.min.js"></script>
   <script src="vendor/hljs-bash.min.js"></script>
   <script src="vendor/hljs-javascript.min.js"></script>
@@ -40,6 +45,12 @@
     <div id="treeContainer" tabindex="0"></div>
     <div id="leftFooter">
       <button id="openBtn" class="btn-ghost">ディレクトリを開く…</button>
+      <div id="themeSelector">
+        <button id="themeBtn" class="btn-ghost" title="テーマ切替">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="M4.93 4.93l1.41 1.41"/><path d="M17.66 17.66l1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="M6.34 17.66l-1.41 1.41"/><path d="M19.07 4.93l-1.41 1.41"/></svg>
+        </button>
+        <div id="themeMenu" hidden></div>
+      </div>
     </div>
   </aside>
 

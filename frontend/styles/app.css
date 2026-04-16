@@ -1,5 +1,27 @@
-/* ─────────── カラー変数 ─────────── */
-:root {
+/* ─────────── カラー変数: テーマ別 ─────────── */
+/* デフォルト (GitHub Light)。data-theme 属性で切替 */
+:root,
+[data-theme="github-light"] {
+  --bg: #fafafa;
+  --bg-surface: #ffffff;
+  --bg-hover: #f0f0f2;
+  --bg-selected: #e0e4ef;
+  --bg-code: #f5f5f7;
+  --border: #dcdce0;
+  --border-subtle: #ebebef;
+  --text: #1c1c1e;
+  --text-secondary: #55555c;
+  --text-faint: #90909a;
+  --accent: #0960d6;
+  --accent-soft: rgba(9, 96, 214, 0.12);
+  --tag-bg: #eaeaef;
+  --code-inline-bg: #eaeaef;
+  --quote-border: #c2c2c8;
+  --toast-bg: #35353d;
+  --toast-border: #48485a;
+}
+
+[data-theme="github-dark"] {
   --bg: #1e1e22;
   --bg-surface: #25252a;
   --bg-hover: #2d2d33;
@@ -19,26 +41,44 @@
   --toast-border: #48485a;
 }
 
-@media (prefers-color-scheme: light) {
-  :root {
-    --bg: #fafafa;
-    --bg-surface: #ffffff;
-    --bg-hover: #f0f0f2;
-    --bg-selected: #e0e4ef;
-    --bg-code: #f5f5f7;
-    --border: #dcdce0;
-    --border-subtle: #ebebef;
-    --text: #1c1c1e;
-    --text-secondary: #55555c;
-    --text-faint: #90909a;
-    --accent: #0960d6;
-    --accent-soft: rgba(9, 96, 214, 0.12);
-    --tag-bg: #eaeaef;
-    --code-inline-bg: #eaeaef;
-    --quote-border: #c2c2c8;
-    --toast-bg: #2c2c34;
-    --toast-border: #48485a;
-  }
+[data-theme="solarized-light"] {
+  --bg: #fdf6e3;
+  --bg-surface: #eee8d5;
+  --bg-hover: #e8e1cc;
+  --bg-selected: #d6cdb7;
+  --bg-code: #eee8d5;
+  --border: #d3cbb7;
+  --border-subtle: #ddd6c1;
+  --text: #657b83;
+  --text-secondary: #586e75;
+  --text-faint: #93a1a1;
+  --accent: #268bd2;
+  --accent-soft: rgba(38, 139, 210, 0.12);
+  --tag-bg: #eee8d5;
+  --code-inline-bg: #eee8d5;
+  --quote-border: #93a1a1;
+  --toast-bg: #073642;
+  --toast-border: #586e75;
+}
+
+[data-theme="solarized-dark"] {
+  --bg: #002b36;
+  --bg-surface: #073642;
+  --bg-hover: #0a4050;
+  --bg-selected: #1a5060;
+  --bg-code: #073642;
+  --border: #1a4a5a;
+  --border-subtle: #0d3d4d;
+  --text: #839496;
+  --text-secondary: #93a1a1;
+  --text-faint: #586e75;
+  --accent: #268bd2;
+  --accent-soft: rgba(38, 139, 210, 0.18);
+  --tag-bg: #073642;
+  --code-inline-bg: #073642;
+  --quote-border: #586e75;
+  --toast-bg: #073642;
+  --toast-border: #586e75;
 }
 
 /* ─────────── レイアウト (CSS Grid) ─────────── */
@@ -145,8 +185,64 @@ button, input, textarea, select, a { -webkit-app-region: no-drag; }
   color: var(--text-faint);
   margin-left: auto;
 }
-@media (prefers-color-scheme: light) {
-  #providerMenu { box-shadow: 0 6px 20px rgba(0, 0, 0, 0.12); }
+/* ライトテーマ向けシャドウ調整 */
+[data-theme="github-light"] #providerMenu,
+[data-theme="solarized-light"] #providerMenu,
+[data-theme="github-light"] #themeMenu,
+[data-theme="solarized-light"] #themeMenu {
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.12);
+}
+
+/* ─── テーマセレクタ ─── */
+#themeSelector {
+  position: relative;
+}
+#themeBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 8px;
+  background: none;
+  border: none;
+  color: var(--text-faint);
+  cursor: pointer;
+  border-radius: 4px;
+}
+#themeBtn:hover {
+  color: var(--text);
+  background: var(--bg-hover);
+}
+#themeMenu {
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  margin-bottom: 4px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 4px;
+  min-width: 160px;
+  z-index: 900;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
+}
+.theme-item {
+  display: block;
+  width: 100%;
+  background: none;
+  border: none;
+  border-radius: 4px;
+  color: var(--text);
+  font-size: 12px;
+  padding: 5px 10px;
+  cursor: pointer;
+  text-align: left;
+}
+.theme-item:hover {
+  background: var(--bg-hover);
+}
+.theme-item.active {
+  color: var(--accent);
+  font-weight: 600;
 }
 
 kbd {
@@ -231,6 +327,7 @@ code {
   padding: 4px 8px;
   display: flex;
   align-items: center;
+  justify-content: space-between;
 }
 
 /* ─────────── ツリー ─────────── */

@@ -5,7 +5,8 @@ import { createPalette } from './palette.js';
 import { createSearch } from './search.js';
 import type { SearchHit } from './search.js';
 import { createTreeView } from './tree.js';
-import { extractTitle, parseFrontmatter, render } from './renderer.js';
+import { extractTitle, parseFrontmatter, render, renderMermaidBlocks } from './renderer.js';
+import { initTheme } from './theme.js';
 import type { OutlineItem, TreeNode } from './types.js';
 
 const TAURI = (window as any).__TAURI__;
@@ -28,6 +29,7 @@ let currentRoot: { path: string; tree: TreeNode } | null = null;
 let currentFile: string | null = null;
 const cache = new Map<string, { rendered: string; title: string; fmHtml: HTMLElement | null }>();
 let activeProviderName = 'Claude';
+let aiAvailable = false; // どれか1つでも AI プロバイダーが利用可能か
 
 const leftPane = byId('leftPane');
 const treeContainer = byId('treeContainer');
@@ -393,6 +395,9 @@ function renderDoc(
   // アクティブファイルの見出しアウトラインをツリーに反映
   const outline = extractOutlineFromDom(body);
   tree.setOutline(path, outline);
+
+  // Mermaid ダイアグラムを非同期レンダリング
+  void renderMermaidBlocks();
 }
 
 // ─── ディレクトリ読み込み ───
@@ -490,6 +495,10 @@ document.addEventListener('keydown', (ev) => {
   }
   if (meta && ev.key.toLowerCase() === 'l') {
     ev.preventDefault();
+    if (!aiAvailable) {
+      showToast('AI プロバイダーが見つかりません (claude / gh / chatgpt)');
+      return;
+    }
     const selObj = window.getSelection();
     const sel = selObj?.toString() || '';
     const filename = currentFile?.split('/').pop() || '';
@@ -655,8 +664,29 @@ function updateProviderBtnLabel(name: string): void {
 async function initProviderMenu(): Promise<void> {
   try {
     const providers = (await invoke('get_ai_providers')) as AiProviderInfo[];
+    const anyAvailable = providers.some((p) => p.available);
+    aiAvailable = anyAvailable;
+
+    // AI プロバイダーが 1 つもなければセレクターを隠してビューア専用モード
+    const providerSelector = byId('providerSelector');
+    if (!anyAvailable) {
+      providerSelector.hidden = true;
+      return;
+    }
+    providerSelector.hidden = false;
+
     const activeId = (await invoke('get_active_provider')) as string;
-    const active = providers.find((p) => p.id === activeId);
+    let active = providers.find((p) => p.id === activeId);
+
+    // デフォルトプロバイダーが利用不可なら最初の利用可能なものに自動切替
+    if (!active?.available) {
+      const fallback = providers.find((p) => p.available);
+      if (fallback) {
+        await invoke('set_active_provider', { provider: fallback.id });
+        active = fallback;
+      }
+    }
+
     if (active) {
       activeProviderName = active.name;
       updateProviderBtnLabel(active.name);
@@ -668,7 +698,7 @@ async function initProviderMenu(): Promise<void> {
       const item = createEl(
         'button',
         {
-          class: `provider-item${p.id === activeId ? ' active' : ''}${!p.available ? ' unavailable' : ''}`,
+          class: `provider-item${p.id === active?.id ? ' active' : ''}${!p.available ? ' unavailable' : ''}`,
           dataset: { id: p.id },
         },
         p.name,
@@ -711,6 +741,8 @@ document.addEventListener('click', () => {
 });
 
 // ─── 起動 ───
+initTheme();
+
 (async () => {
   try {
     await initProviderMenu();
