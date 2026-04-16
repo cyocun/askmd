@@ -1,6 +1,6 @@
 # askmd
 
-> Claude Code ユーザー向けの、静かで速い `.md` 専用ビューア。docs を回遊して、気になった箇所を選択 → そのまま Claude に質問。API キー管理は不要。
+> 静かで速い `.md` 専用ビューア + AI Q&A。Markdown ファイルを回遊して、気になった箇所を選択 → そのまま AI に質問。Claude / GitHub Copilot / ChatGPT に対応。
 
 [English](README.md) · **日本語** · [简体中文](README.zh-CN.md) · [한국어](README.ko.md) · [Español](README.es.md)
 
@@ -10,9 +10,9 @@
 
 ## なぜ askmd？
 
-Claude Code を日常的に使っていると、`docs/` にはあっという間に md が溜まる — 設計メモ、調査サマリ、引き継ぎ資料、レビュー指摘まとめ。問題は「書くこと」ではなく、「後から読む」ときに毎回重厚なエディタを立ち上げるのが面倒なこと。
+Markdown ファイルはどこにでも溜まる — 設計メモ、議事録、調査サマリ、引き継ぎ資料、レビュー指摘まとめ。問題は「書くこと」ではなく、「後から読む」ときに毎回重厚なエディタを立ち上げるのが面倒なこと。
 
-askmd はその隙間を埋める: **`.md` 専用のビューア + ディレクトリ回遊 + 選択範囲を Claude に質問**。既存の `claude` CLI 認証をそのまま流用するので、API キー管理も課金の二重化もなし。
+askmd はその隙間を埋める: **`.md` 専用のビューア + ディレクトリ回遊 + 選択範囲を AI に質問**。API キー管理不要 — ローカルにインストール済みの CLI を直接呼び出すだけ。
 
 ### 既存ツールとの比較
 
@@ -26,7 +26,7 @@ askmd はその隙間を埋める: **`.md` 専用のビューア + ディレク�
 | Ferrite | 軽量だが `.md` 以外も扱うエディタ |
 | MDChat | CLI のみ。GUI やディレクトリ回遊がない |
 
-**askmd の唯一の組み合わせ**: `.md` 専用 + ディレクトリツリー + 軽量 GUI + Claude CLI Q&A (キー管理不要)。
+**askmd の唯一の組み合わせ**: `.md` 専用 + ディレクトリツリー + 軽量 GUI + AI Q&A (キー管理不要)。
 
 ## 設計思想
 
@@ -35,27 +35,29 @@ askmd はその隙間を埋める: **`.md` 専用のビューア + ディレク�
 1. **サクサク最優先** — Tauri (Rust + WebView)、バンドラなし、レンダリング結果をメモリキャッシュ。「Obsidian を開くのが億劫な気分でも askmd なら開ける」軽さが目標。
 2. **キーボードファースト** — マウスに手を伸ばさず完結。`↑↓` で移動、`Enter` で開く、`@` で絞り込み、`Cmd+P` でスイッチ、`Cmd+L` で質問。
 3. **`.md` に絞る** — JSON/YAML/コードファイル/隠しディレクトリはツリーに出さない。ノイズを減らす意志の表明であり、多機能化を防ぐ防波堤。
-4. **Claude は既存 CLI 流用** — API キー不要、追加課金なし。`claude -p` サブプロセスで Max/Pro サブスクをそのまま利用。Cursor の「選択範囲を質問」に近い体験を、ローカルで、既存契約内で。
+4. **AI は既存 CLI 流用** — API キー不要、追加課金なし。ローカルにインストール済みの CLI (`claude` / `gh copilot` / `chatgpt`) をサブプロセスで呼び出す。CLI がなくてもビューア単体として動く。
 5. **ビューアであり、エディタではない** — 編集機能・ツールバー・保存ボタンなし。VS Code/Neovim/Zed で編集すれば askmd 側は即座に反映。
 
 ## 誰のため？
 
-- `claude` CLI を既にセットアップしている Claude Code ユーザー
-- `docs/` に md を数十〜数百溜め込んでいる人
-- 読む人 (書くのは VS Code などで。askmd は読むだけ)
+- Markdown ファイルが溜まっていて、速く・集中して読みたい人
+- Markdown でドキュメントを共有しているチーム — デザイナーも PM もエンジニアも
+- 読みながら「ここどういう意味？」を AI にその場で聞きたい人
 
-対象外: Markdown を **書く** 道具が欲しい人、ノート管理 (バックリンク・グラフビュー) が欲しい人、Claude Code を使っていない人。
+AI の CLI がなくても、askmd はディレクトリツリー・キーボード操作・全文検索・ファイル監視を備えた軽量 `.md` ビューアとして使える。
 
 ## 機能
 
 - `.md` だけのツリー (`.git` / `node_modules` / `.obsidian` などの隠しディレクトリはスキップ、`.md` を含まないディレクトリは畳まれる)
 - レンダリング: markdown-it + highlight.js + DOMPurify
+- Mermaid ダイアグラム + KaTeX 数式レンダリング
 - キーボードファースト — マウス不要
 - ファイル変更監視 (`notify` crate): 別エディタで保存すると即反映
 - フロントマター抽出 → タイトル / 日付 / タグをヘッダーに表示
 - `.md` 間の相対リンクで内部遷移、画像は同ディレクトリ基準
 - 全文検索: `.md` を横断してテキストを検索 (`Cmd+F`)
-- **選択 → `Cmd+L` → 右ペインに Claude の回答をストリーム表示** (`claude -p` サブプロセス経由)
+- テーマシステム (GitHub Light/Dark, Solarized Light/Dark)
+- **選択 → `Cmd+L` → 右ペインに AI の回答をストリーム表示** (CLI サブプロセス経由)
 
 ## キーボードショートカット
 
@@ -67,7 +69,7 @@ askmd はその隙間を埋める: **`.md` 専用のビューア + ディレク�
 | `Cmd+P` | クイックスイッチ |
 | `Cmd+F` | 全文横断検索 |
 | `Cmd+[` / `Cmd+]` | 履歴の戻る / 進む |
-| `Cmd+L` | 選択範囲を Claude に質問 |
+| `Cmd+L` | 選択範囲を AI に質問 |
 
 ## インストール / ビルド
 
@@ -77,7 +79,7 @@ askmd はその隙間を埋める: **`.md` 専用のビューア + ディレク�
 brew install --cask cyocun/tap/askmd
 ``` -->
 
-必要: Rust ツールチェーン、Node.js、`claude` CLI が `PATH` にあること。
+必要: Rust ツールチェーン、Node.js。
 
 ```sh
 git clone https://github.com/cyocun/askmd.git
@@ -90,20 +92,81 @@ npm run tauri:build    # リリースビルド
 ダイアログからディレクトリを開くか、ウィンドウにフォルダをドロップするか、引数で渡す:
 
 ```sh
-askmd ~/myrepo/docs
+askmd ~/my-notes
 ```
 
-## 「Claude に聞く」の仕組み
+## 「AI に聞く」の仕組み
 
-レンダリング表示内でテキストを選択 → `Cmd+L`。askmd が `claude -p "<選択範囲を含むプロンプト>"` をサブプロセスで実行し、結果を右ペインにストリームで描画する。API キー設定や別課金は不要 — 既存の Claude Code サブスクがそのまま使われる。
+レンダリング表示内でテキストを選択 → `Cmd+L`。askmd がシステム上で利用可能な AI CLI を検出し、右上のメニューからプロバイダを選択できる。回答は右ペインにストリームで描画される。
 
-将来: ターミナル連携モード (iTerm/Terminal 経由で対話継続)、Claude Desktop ディープリンク対応を検討中。
+対応プロバイダ:
+
+| プロバイダ | CLI コマンド | ストリーミング |
+|---|---|---|
+| **Claude** | `claude` | 構造化 JSON ストリーミング (ツール使用対応) |
+| **GitHub Copilot** | `gh copilot` | プレーンテキスト |
+| **ChatGPT** | `chatgpt` | プレーンテキスト |
+
+複数の CLI がインストールされていれば、メニューから切り替え可能。どれもインストールされていなければ、AI 機能は非表示になり、純粋なビューアとして動作する。
+
+## AI CLI のセットアップ
+
+AI Q&A 機能を使うには、以下のいずれかの CLI をインストールする。
+
+### Claude (推奨)
+
+Claude CLI は [Claude Code](https://docs.anthropic.com/en/docs/claude-code) の一部。Claude Pro / Max / Team プランが必要。
+
+```sh
+# npm でインストール
+npm install -g @anthropic-ai/claude-code
+
+# 初回セットアップ — ブラウザが開いて認証
+claude
+```
+
+認証が済めば `claude` コマンドが使える。API キー不要 — askmd が直接呼び出す。
+
+### GitHub Copilot
+
+Copilot は [GitHub CLI](https://cli.github.com/) 経由で動作する。GitHub Copilot のサブスクリプションが必要 (無料枠あり)。
+
+```sh
+# macOS
+brew install gh
+
+# Windows
+winget install GitHub.cli
+
+# 認証して Copilot 拡張をインストール
+gh auth login
+gh extension install github/gh-copilot
+```
+
+ターミナルで `gh copilot` が動けば、askmd が自動検出する。
+
+### ChatGPT
+
+コミュニティ製の [chatgpt-cli](https://github.com/kardolus/chatgpt-cli) を使用。OpenAI API キーが必要。
+
+```sh
+# macOS
+brew tap kardolus/chatgpt-cli
+brew install chatgpt-cli
+
+# API キーを設定
+export OPENAI_API_KEY="sk-..."
+```
+
+ターミナルで `chatgpt` コマンドが動けば、askmd が自動検出する。
+
+---
+
+**CLI が入っていなくても大丈夫** — askmd はキーボード操作の速い `.md` ビューアとしてそのまま使える。CLI は好きなタイミングでインストールすれば、次回起動時に AI 機能が自動で現れる。
 
 ## ロードマップ
 
-Phase 1 (MVP、実装中): ツリー・レンダリング・キーボードナビ・ファイル監視・全文検索・ストリーミング `Cmd+L` Q&A。
-
-Phase 2 以降: tantivy ベースの検索、ターミナル連携、最近開いたリスト UI、自動アップデータ、リリース配布。
+Phase 2 以降: ターミナル連携モード、軽量編集、分割表示、Homebrew Cask 配布。
 
 ## サポート
 
