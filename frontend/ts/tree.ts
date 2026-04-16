@@ -53,6 +53,8 @@ export function createTreeView(
   let pendingDeletePath: string | null = null;
   // ナビゲーションモード: file = ファイル間移動、outline = 見出し間移動
   let navMode: NavMode = 'file';
+  // アウトラインはデフォルト閉じ。→ で展開 (outline mode 移行)、← で折畳
+  let outlineExpanded = false;
 
   const visibleRowsForMode = (): Row[] => {
     return rows.filter((r) => {
@@ -87,6 +89,18 @@ export function createTreeView(
 
   const buildFileNode = (node: TreeNode, depth: number): HTMLElement => {
     const indent = 6 + depth * 12;
+    const hasOutline =
+      node.path === activePath &&
+      node.path === outlineForPath &&
+      outlineItems.length > 0;
+    // アウトライン展開インジケータ (active + outline がある場合のみ表示)
+    const indicator = hasOutline
+      ? createEl(
+          'span',
+          { class: 'tree-outline-indicator' },
+          outlineExpanded ? '▾' : '▸',
+        )
+      : null;
     const nameWrap = createEl(
       'div',
       { class: 'tree-name-wrap' },
@@ -114,6 +128,7 @@ export function createTreeView(
     });
     el.appendChild(iconFile());
     el.appendChild(nameWrap);
+    if (indicator) el.appendChild(indicator);
     el.appendChild(delBtn);
     rows.push({ kind: 'file', key: node.path, node, el });
     return el;
@@ -170,8 +185,9 @@ export function createTreeView(
           childrenWrap.appendChild(buildDirNode(child, depth + 1));
         } else {
           childrenWrap.appendChild(buildFileNode(child, depth + 1));
-          // アクティブファイルの直後に outline を差し込む
+          // アクティブファイル & outline 展開中のみアウトラインを差し込む
           if (
+            outlineExpanded &&
             child.path === activePath &&
             child.path === outlineForPath &&
             outlineItems.length > 0
@@ -197,6 +213,7 @@ export function createTreeView(
       } else {
         container.appendChild(buildFileNode(child, 0));
         if (
+          outlineExpanded &&
           child.path === activePath &&
           child.path === outlineForPath &&
           outlineItems.length > 0
@@ -242,6 +259,7 @@ export function createTreeView(
       outlineForPath = null;
       pendingDeletePath = null;
       navMode = 'file';
+      outlineExpanded = false;
       if (root?.children) {
         for (const c of root.children) if (c.is_dir) expanded.add(c.path);
       }
@@ -252,6 +270,11 @@ export function createTreeView(
     },
     setActive(path) {
       activePath = path;
+      // 別のファイルに切り替わったらアウトラインは閉じる
+      if (path !== outlineForPath) {
+        outlineExpanded = false;
+        navMode = 'file';
+      }
       if (path) expandAncestors(path);
       buildDom();
     },
@@ -302,13 +325,15 @@ export function createTreeView(
       return navMode;
     },
     enterOutlineMode() {
-      // 現在 selected が file で、そのファイルの outline が用意されていれば移行
       const row = rows.find((r) => r.key === selectedKey);
       if (!row || row.kind !== 'file' || !row.node) return false;
       if (outlineForPath !== row.node.path || outlineItems.length === 0) return false;
+      // 展開 + DOM 再構築で outline 行を生成
+      outlineExpanded = true;
+      buildDom();
+      navMode = 'outline';
       const firstOutline = rows.find((r) => r.kind === 'outline');
       if (!firstOutline) return false;
-      navMode = 'outline';
       selectedKey = firstOutline.key;
       refreshClasses();
       scrollSelectedIntoView();
@@ -317,9 +342,11 @@ export function createTreeView(
     },
     exitOutlineMode() {
       if (navMode !== 'outline') return false;
-      // 戻り先は現在のアウトラインの親ファイル
       if (outlineForPath) selectedKey = outlineForPath;
+      // 折畳 + DOM 再構築で outline 行を消す
+      outlineExpanded = false;
       navMode = 'file';
+      buildDom();
       refreshClasses();
       scrollSelectedIntoView();
       return true;

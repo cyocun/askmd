@@ -239,6 +239,17 @@ code {
 .tree-delete:hover { background: rgba(230, 80, 80, 0.2); color: #e57373; }
 .tree-node.confirm-delete .tree-delete { color: #e57373; }
 
+/* ▸ / ▾ アウトライン展開インジケータ (active + outline あり のファイルのみ表示) */
+.tree-outline-indicator {
+  font-size: 10px;
+  color: var(--text-faint);
+  width: 14px;
+  text-align: center;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+.tree-node.active .tree-outline-indicator { color: var(--accent); }
+
 /* アウトライン (アクティブファイル配下の見出しリスト) */
 .tree-outline {
   display: grid;
