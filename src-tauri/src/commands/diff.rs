@@ -26,27 +26,22 @@ pub struct FileChangeInfo {
 
 // ─── git ヘルパー ───
 
-/// macOS GUI アプリでは PATH が制限されるため、フルパスも試す
-fn git_command() -> Command {
-    // まず PATH 上の git を試す
-    if let Ok(output) = Command::new("git").arg("--version").output() {
-        if output.status.success() {
-            return Command::new("git");
-        }
-    }
-    // Xcode CLT / Homebrew の一般的なパスを試す
+static GIT_PATH: LazyLock<String> = LazyLock::new(|| {
     for path in ["/usr/bin/git", "/usr/local/bin/git", "/opt/homebrew/bin/git"] {
         if Path::new(path).exists() {
-            return Command::new(path);
+            return path.to_string();
         }
     }
-    Command::new("git")
+    "git".to_string()
+});
+
+fn git_command() -> Command {
+    Command::new(GIT_PATH.as_str())
 }
 
 static GIT_REPO_CACHE: LazyLock<Mutex<HashMap<PathBuf, Option<PathBuf>>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
 
-/// git リポジトリのルートパスを返す。リポジトリ外なら None。
 fn git_toplevel(root: &Path) -> Option<PathBuf> {
     if let Ok(cache) = GIT_REPO_CACHE.lock() {
         if let Some(cached) = cache.get(root) {
@@ -73,45 +68,59 @@ fn is_git_repo(root: &Path) -> bool {
     git_toplevel(root).is_some()
 }
 
-// ─── git diff (単一ファイル) ───
+/// 直近コミットでファイルが変更された際の比較対象コミットを取得。
+/// そのファイルを変更した直近のコミットの "1 つ前" を返す。
+/// (= 最後に変更される前の状態)
+fn git_prev_commit_for_file(path: &Path, git_root: &Path) -> Option<String> {
+    let output = git_command()
+        .args(["log", "--format=%H", "-2", "--follow", "--diff-filter=ACMR", "--"])
+        .arg(path)
+        .current_dir(git_root)
+        .output()
+        .ok()?;
+    if !output.status.success() { return None; }
+    let text = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    let commits: Vec<&str> = text.lines().collect();
+    commits.get(1).map(|s| s.to_string())
+}
+
+// ─── git diff (単一ファイル: 直近コミットの変更) ───
 
 fn git_diff_lines(path: &Path, git_root: &Path) -> Option<DiffInfo> {
-    let output = git_command()
+    // まず uncommitted changes をチェック
+    let uncommitted = git_command()
         .args(["diff", "HEAD", "--unified=0", "--"])
+        .arg(path)
+        .current_dir(git_root)
+        .output()
+        .ok();
+
+    if let Some(ref out) = uncommitted {
+        if out.status.success() && !out.stdout.is_empty() {
+            let diff_text = String::from_utf8_lossy(&out.stdout);
+            if !diff_text.trim().is_empty() {
+                let info = parse_unified_diff(&diff_text);
+                if info.change_count > 0 { return Some(info); }
+            }
+        }
+    }
+
+    // uncommitted がなければ、直近コミットでの変更を取得
+    let prev = git_prev_commit_for_file(path, git_root)?;
+    let output = git_command()
+        .args(["diff", &format!("{}..HEAD", prev), "--unified=0", "--"])
         .arg(path)
         .current_dir(git_root)
         .output()
         .ok()?;
 
-    if !output.status.success() {
+    if !output.status.success() || output.stdout.is_empty() {
         return None;
     }
 
     let diff_text = String::from_utf8_lossy(&output.stdout);
-    if diff_text.trim().is_empty() {
-        // untracked ファイルかチェック
-        let untracked = git_command()
-            .args(["ls-files", "--others", "--exclude-standard", "--"])
-            .arg(path)
-            .current_dir(git_root)
-            .output()
-            .ok()?;
-        if String::from_utf8_lossy(&untracked.stdout).trim().is_empty() {
-            return None;
-        }
-        let file = fs::File::open(path).ok()?;
-        let line_count = std::io::BufRead::lines(std::io::BufReader::new(file)).count() as u32;
-        let added: Vec<u32> = (1..=line_count).collect();
-        return Some(DiffInfo {
-            change_count: line_count,
-            added,
-            changed: vec![],
-        });
-    }
-
     let info = parse_unified_diff(&diff_text);
-    if info.change_count == 0 { return None; }
-    Some(info)
+    if info.change_count > 0 { Some(info) } else { None }
 }
 
 fn parse_unified_diff(diff_text: &str) -> DiffInfo {
@@ -141,12 +150,36 @@ fn parse_unified_diff(diff_text: &str) -> DiffInfo {
     DiffInfo { added, changed, change_count }
 }
 
-// ─── git diff (リポジトリ全体を一括取得) ───
+// ─── git: 全変更ファイルを一括取得 (直近 7 日間のコミット) ───
 
 fn git_all_changes(git_root: &Path) -> HashMap<PathBuf, u32> {
     let mut result = HashMap::new();
 
-    // --numstat: machine-parseable "added\tremoved\tpath" 形式
+    // 直近 7 日間にコミットで変更された .md ファイルと変更量
+    if let Ok(output) = git_command()
+        .args(["log", "--since=7 days ago", "--numstat", "--pretty=format:", "--diff-filter=ACMR", "--"])
+        .current_dir(git_root)
+        .output()
+    {
+        if output.status.success() {
+            for line in String::from_utf8_lossy(&output.stdout).lines() {
+                let line = line.trim();
+                if line.is_empty() { continue; }
+                let parts: Vec<&str> = line.split('\t').collect();
+                if parts.len() != 3 { continue; }
+                let file = parts[2];
+                let abs_path = git_root.join(file);
+                if !util::is_markdown(&abs_path) { continue; }
+                let added: u32 = parts[0].parse().unwrap_or(0);
+                let removed: u32 = parts[1].parse().unwrap_or(0);
+                // 同じファイルが複数コミットで変更された場合は合算
+                let entry = result.entry(abs_path).or_insert(0u32);
+                *entry += added + removed;
+            }
+        }
+    }
+
+    // uncommitted changes も含める
     if let Ok(output) = git_command()
         .args(["diff", "HEAD", "--numstat", "--"])
         .current_dir(git_root)
@@ -156,15 +189,12 @@ fn git_all_changes(git_root: &Path) -> HashMap<PathBuf, u32> {
             for line in String::from_utf8_lossy(&output.stdout).lines() {
                 let parts: Vec<&str> = line.split('\t').collect();
                 if parts.len() != 3 { continue; }
-                let file = parts[2];
-                let abs_path = git_root.join(file);
+                let abs_path = git_root.join(parts[2]);
                 if !util::is_markdown(&abs_path) { continue; }
                 let added: u32 = parts[0].parse().unwrap_or(0);
                 let removed: u32 = parts[1].parse().unwrap_or(0);
-                let count = added + removed;
-                if count > 0 {
-                    result.insert(abs_path, count);
-                }
+                let entry = result.entry(abs_path).or_insert(0u32);
+                *entry += added + removed;
             }
         }
     }
@@ -232,9 +262,7 @@ fn snapshot_diff_lines(path: &Path, root: &Path) -> Option<DiffInfo> {
 
     for change in diff.iter_all_changes() {
         match change.tag() {
-            ChangeTag::Equal => {
-                new_line += 1;
-            }
+            ChangeTag::Equal => { new_line += 1; }
             ChangeTag::Insert => {
                 new_line += 1;
                 added_set.insert(new_line);
@@ -251,9 +279,7 @@ fn snapshot_diff_lines(path: &Path, root: &Path) -> Option<DiffInfo> {
     changed.dedup();
 
     let change_count = (added.len() + changed.len()) as u32;
-    if change_count == 0 {
-        return None;
-    }
+    if change_count == 0 { return None; }
     Some(DiffInfo { added, changed, change_count })
 }
 
@@ -269,19 +295,18 @@ fn save_snapshot_inner(root: &Path, file_path: &Path, content: &str) {
 // ─── Tauri コマンド ───
 
 #[tauri::command]
-pub async fn get_diff(path: String, root: String) -> Option<DiffInfo> {
+pub async fn get_diff(path: String, root: String) -> Result<Option<DiffInfo>, String> {
     let file_path = PathBuf::from(&path);
     let root_path = PathBuf::from(&root);
     tauri::async_runtime::spawn_blocking(move || {
         if let Some(git_root) = git_toplevel(&root_path) {
-            git_diff_lines(&file_path, &git_root)
+            Ok(git_diff_lines(&file_path, &git_root))
         } else {
-            snapshot_diff_lines(&file_path, &root_path)
+            Ok(snapshot_diff_lines(&file_path, &root_path))
         }
     })
     .await
-    .ok()
-    .flatten()
+    .map_err(|e| format!("spawn error: {}", e))?
 }
 
 #[tauri::command]
@@ -306,7 +331,6 @@ pub async fn get_changed_files(root: String) -> Vec<FileChangeInfo> {
 
         if let Some(git_root) = git_toplevel(&root_path) {
             let changes = git_all_changes(&git_root);
-            // root 配下のファイルのみ返す (サブディレクトリで開いた場合)
             for (path, count) in changes {
                 if !path.starts_with(&root_path) { continue; }
                 let name = path.file_name().unwrap_or_default().to_string_lossy().into_owned();

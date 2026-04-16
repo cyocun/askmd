@@ -481,7 +481,9 @@ function buildFmHeader(
             diffCache.delete(path);
           });
         }
-      } catch { /* ignore */ }
+      } catch (e) {
+        console.warn('get_diff failed:', e);
+      }
     })();
   }
   infoRow.appendChild(actions);
