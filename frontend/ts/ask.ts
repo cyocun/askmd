@@ -131,7 +131,7 @@ interface TurnHandle {
   finalize(fallbackText?: string): void;
 }
 
-function createTurn(log: HTMLElement, question: string, deps: AskDeps): TurnHandle {
+function createTurn(log: HTMLElement, question: string, deps: AskDeps, root: string): TurnHandle {
   // ユーザーメッセージ (badge + text、同じ grid 構造)
   const qRow = createEl('div', { class: 'ask-msg' },
     createEl('span', { class: 'ask-badge' }, 'You'),
@@ -139,13 +139,13 @@ function createTurn(log: HTMLElement, question: string, deps: AskDeps): TurnHand
   );
 
   // AI 回答 (badge + body、同じ grid 構造)
-  const tools = createEl('div', { class: 'ask-tools' });
-  const aText = createEl('div', { class: 'ask-a' });
+  // ツールとテキストを時系列で単一フローに追加
+  const aFlow = createEl('div', { class: 'ask-a-flow' });
   const aStatus = createEl('div', { class: 'ask-a-status' },
     createEl('span', { class: 'ask-a-spinner' }),
     createEl('span', {}, t('ask.thinking')),
   );
-  const aBody = createEl('div', { class: 'ask-a-body' }, aStatus, tools, aText);
+  const aBody = createEl('div', { class: 'ask-a-body' }, aStatus, aFlow);
   const aRow = createEl('div', { class: 'ask-msg' },
     createEl('span', { class: 'ask-badge ask-badge-ai' }, 'AI'),
     aBody,
@@ -154,12 +154,13 @@ function createTurn(log: HTMLElement, question: string, deps: AskDeps): TurnHand
   const turn = createEl('div', { class: 'ask-turn' }, qRow, aRow);
   log.appendChild(turn);
 
-  // ストリーミング中の生テキストを蓄積
   let rawText = '';
+  // 現在のテキストチャンク要素 (ツール挿入でリセット)
+  let currentTextEl: HTMLElement | null = null;
 
   return {
     addTool(name, input) {
-      const summary = summarizeToolCall(name, input);
+      const summary = summarizeToolCall(name, input, root);
       while (aStatus.firstChild) aStatus.removeChild(aStatus.firstChild);
       aStatus.appendChild(createEl('span', { class: 'ask-a-spinner' }));
       aStatus.appendChild(createEl('span', {}, t('ask.toolRunning', name)));
@@ -169,53 +170,73 @@ function createTurn(log: HTMLElement, question: string, deps: AskDeps): TurnHand
         createEl('span', { class: 'ask-tool-name' }, name),
         summary ? createEl('span', { class: 'ask-tool-arg' }, summary) : null,
       );
-      tools.appendChild(chip);
+      aFlow.appendChild(chip);
+      // ツール後のテキストは新しい要素に
+      currentTextEl = null;
     },
     appendText(text) {
       aStatus.hidden = true;
       rawText += text;
-      aText.textContent = rawText;
+      if (!currentTextEl) {
+        currentTextEl = createEl('div', { class: 'ask-a' });
+        aFlow.appendChild(currentTextEl);
+      }
+      currentTextEl.textContent = (currentTextEl.textContent || '') + text;
     },
     hasText() {
       return rawText.length > 0;
     },
     showError(message) {
       aStatus.hidden = true;
-      aText.classList.add('error');
-      aText.textContent = t('ask.error', message);
+      const errEl = createEl('div', { class: 'ask-a error' });
+      errEl.textContent = t('ask.error', message);
+      aFlow.appendChild(errEl);
     },
     finalize(fallbackText) {
       aStatus.hidden = true;
       const finalText = rawText || fallbackText || '';
       if (finalText) {
-        // 完了時に markdown をレンダリング
+        // フロー内のテキスト要素をすべて除去し、markdown レンダリングで置換
+        aFlow.querySelectorAll('.ask-a').forEach((el) => el.remove());
+        const rendered = createEl('div', { class: 'ask-a md-body' });
         const html = deps.renderMarkdown(finalText);
         const doc = new DOMParser().parseFromString(html, 'text/html');
-        while (aText.firstChild) aText.removeChild(aText.firstChild);
-        aText.classList.add('md-body');
-        while (doc.body.firstChild) aText.appendChild(doc.body.firstChild);
+        while (doc.body.firstChild) rendered.appendChild(doc.body.firstChild);
+        aFlow.appendChild(rendered);
       }
     },
   };
 }
 
-function summarizeToolCall(name: string, input: Record<string, unknown> | undefined): string {
+function shortenPath(fullPath: string, root: string): string {
+  if (root && fullPath.startsWith(root)) {
+    return fullPath.slice(root.length).replace(/^\/+/, '');
+  }
+  // ルート外ならファイル名だけ
+  return fullPath.split('/').pop() || fullPath;
+}
+
+function summarizeToolCall(name: string, input: Record<string, unknown> | undefined, root: string): string {
   if (!input) return '';
   const pick = (k: string): string => {
     const v = input[k];
     return typeof v === 'string' ? v : '';
   };
-  if (name === 'Read') return pick('file_path');
+  const shortFile = (k: string) => shortenPath(pick(k), root);
+
+  if (name === 'Read') return shortFile('file_path');
+  if (name === 'Edit' || name === 'Write') return shortFile('file_path');
   if (name === 'Glob') {
     const p = pick('pattern');
     const path = pick('path');
-    return path ? `${p} @ ${path}` : p;
+    return path ? `${p} @ ${shortenPath(path, root)}` : p;
   }
   if (name === 'Grep') {
     const p = pick('pattern');
     const path = pick('path');
-    return path ? `${p} in ${path}` : p;
+    return path ? `${p} in ${shortenPath(path, root)}` : p;
   }
+  if (name === 'Bash') return pick('command');
   // それ以外のツールは JSON を短く出す
   try {
     const s = JSON.stringify(input);
@@ -295,7 +316,7 @@ function buildPanel(
     const question = input.value.trim();
     if (!question) return;
 
-    const turn = createTurn(log, question, deps);
+    const turn = createTurn(log, question, deps, ctx.root);
     input.value = '';
     input.disabled = true;
     sendBtn.disabled = true;

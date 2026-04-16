@@ -85,5 +85,8 @@
 - Claude Desktop 連携 (API が来たら)
 - 軽量編集 (`Cmd+E` → CodeMirror 6 ソース編集)
 - 分割表示 (side-by-side 2 ファイル比較)
+<<<<<<< HEAD
 - Homebrew Cask (`brew install --cask cyocun/tap/askmd`、ワークフロー・スクリプトは実装済み)
+=======
+>>>>>>> 4f3c551 (improve: Askパネルのツール・テキスト時系列表示、ツール権限追加)
 - macOS コード署名 / Notarization

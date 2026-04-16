@@ -1075,7 +1075,6 @@ body.focus-tree .tree-node.selected .tree-outline-indicator {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
-  padding-left: 22px;
 }
 .ask-tools:empty { display: none; }
 .ask-tool-chip {
@@ -1144,6 +1143,14 @@ body.focus-tree .tree-node.selected .tree-outline-indicator {
 .ask-a-body {
   min-width: 0;
   flex: 1;
+}
+.ask-a-flow {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.ask-a-flow .ask-tool-chip {
+  align-self: flex-start;
 }
 .ask-a {
   font-size: 13px;

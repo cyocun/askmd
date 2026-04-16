@@ -171,7 +171,7 @@ async fn run_claude(
         .arg("stream-json")
         .arg("--verbose")
         .arg("--allowedTools")
-        .arg("Read,Glob,Grep");
+        .arg("Read,Glob,Grep,Edit,Write,Bash");
     if let Some(sid) = session_id.as_deref() {
         if !sid.is_empty() {
             cmd.arg("--resume").arg(sid);
