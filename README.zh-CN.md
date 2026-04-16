@@ -71,6 +71,12 @@ askmd 填补了这个空缺: **`.md` 专用阅读器 + 目录导航 + 选中内�
 
 ## 安装 / 构建
 
+<!-- ### Homebrew (macOS)
+
+```sh
+brew install --cask cyocun/tap/askmd
+``` -->
+
 需要: Rust 工具链、Node.js、`PATH` 中包含 `claude` CLI。
 
 ```sh

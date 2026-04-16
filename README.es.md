@@ -71,6 +71,12 @@ No es para: quien busca un *editor* de Markdown, quien necesita gestión de nota
 
 ## Instalación / Compilación
 
+<!-- ### Homebrew (macOS)
+
+```sh
+brew install --cask cyocun/tap/askmd
+``` -->
+
 Requisitos: toolchain de Rust, Node.js, CLI `claude` en el `PATH`.
 
 ```sh

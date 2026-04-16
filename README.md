@@ -71,6 +71,12 @@ Not for: people who want a Markdown *editor*, note-management features (backlink
 
 ## Install / Build
 
+<!-- ### Homebrew (macOS)
+
+```sh
+brew install --cask cyocun/tap/askmd
+``` -->
+
 Requirements: Rust toolchain, Node.js, `claude` CLI on `PATH`.
 
 ```sh

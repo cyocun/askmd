@@ -1,0 +1,82 @@
+name: Update Homebrew Cask
+
+# Disabled until homebrew-tap repo is set up
+# on:
+#   release:
+#     types: [published]
+on: workflow_dispatch
+
+jobs:
+  update-cask:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Extract version from tag
+        id: version
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Download release DMGs
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release download "${{ github.ref_name }}" \
+            --repo cyocun/askmd \
+            --pattern "*.dmg" \
+            --dir ./dmg
+          ls -la ./dmg/
+
+      - name: Compute SHA256 checksums
+        id: sha
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          echo "arm=$(sha256sum ./dmg/askmd_${VERSION}_aarch64.dmg | awk '{print $1}')" >> "$GITHUB_OUTPUT"
+          echo "intel=$(sha256sum ./dmg/askmd_${VERSION}_x64.dmg | awk '{print $1}')" >> "$GITHUB_OUTPUT"
+
+      - name: Clone tap repository
+        env:
+          GH_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: |
+          git clone "https://x-access-token:${GH_TOKEN}@github.com/cyocun/homebrew-tap.git"
+
+      - name: Generate Cask formula
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          SHA_ARM="${{ steps.sha.outputs.arm }}"
+          SHA_INTEL="${{ steps.sha.outputs.intel }}"
+
+          mkdir -p homebrew-tap/Casks
+          cat > homebrew-tap/Casks/askmd.rb << EOF
+          cask "askmd" do
+            arch arm: "aarch64", intel: "x64"
+
+            version "${VERSION}"
+            sha256 arm:   "${SHA_ARM}",
+                   intel: "${SHA_INTEL}"
+
+            url "https://github.com/cyocun/askmd/releases/download/v#{version}/askmd_#{version}_#{arch}.dmg"
+            name "askmd"
+            desc "Markdown viewer with Claude AI integration"
+            homepage "https://github.com/cyocun/askmd"
+
+            depends_on macos: ">= :monterey"
+
+            app "askmd.app"
+
+            zap trash: [
+              "~/Library/Application Support/com.cyocun.askmd",
+              "~/Library/Caches/com.cyocun.askmd",
+              "~/Library/Preferences/com.cyocun.askmd.plist",
+              "~/Library/Saved Application State/com.cyocun.askmd.savedState",
+            ]
+          end
+          EOF
+
+      - name: Push updated formula
+        working-directory: homebrew-tap
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Casks/askmd.rb
+          git diff --cached --quiet && echo "No changes to commit" && exit 0
+          git commit -m "Update askmd to ${{ steps.version.outputs.version }}"
+          git push
