@@ -1,6 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod commands;
+mod menu;
 
 use commands::ai::ActiveProvider;
 use commands::cli::InitialPath;
@@ -47,7 +48,11 @@ fn main() {
             commands::translate::translate_text,
             commands::recent::get_recent_dirs,
             commands::recent::add_recent_dir,
+            commands::finder::reveal_in_finder,
+            commands::finder::open_url,
         ])
+        .menu(|handle| menu::build(handle))
+        .on_menu_event(menu::handle_event)
         .setup(|app| {
             let handle = app.handle().clone();
             // 起動 5 秒後に初回チェック、以降 6 時間周期
