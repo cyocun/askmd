@@ -26,13 +26,16 @@ pub async fn translate_text(
         .unwrap_or(default_target);
 
     let url = format!(
-        "https://translate.googleapis.com/translate_a/single?client=gtx&sl={}&tl={}&dt=t&q={}",
+        "https://translate.googleapis.com/translate_a/single?client=gtx&sl={}&tl={}&dt=t",
         source,
         target,
-        urlencoding::encode(&text)
     );
 
-    let resp = reqwest::get(&url)
+    let client = reqwest::Client::new();
+    let resp = client
+        .post(&url)
+        .form(&[("q", text.as_str())])
+        .send()
         .await
         .map_err(|e| format!("リクエスト失敗: {}", e))?;
 
