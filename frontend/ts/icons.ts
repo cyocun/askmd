@@ -32,6 +32,22 @@ export const iconFolder = (): SVGElement => icon([
   'M5 4h4l3 3h7a2 2 0 0 1 2 2v8a2 2 0 0 1 -2 2h-14a2 2 0 0 1 -2 -2v-11a2 2 0 0 1 2 -2',
 ]);
 
+export const iconTrash = (): SVGElement => icon([
+  'M4 7l16 0',
+  'M10 11l0 6',
+  'M14 11l0 6',
+  'M5 7l1 12a2 2 0 0 0 2 2h8a2 2 0 0 0 2 -2l1 -12',
+  'M9 7v-3a1 1 0 0 1 1 -1h4a1 1 0 0 1 1 1v3',
+]);
+
+export const iconOutline = (): SVGElement => icon([
+  'M4 6l16 0',
+  'M8 12l12 0',
+  'M8 18l12 0',
+  'M4 12l0 .01',
+  'M4 18l0 .01',
+]);
+
 export const iconFolderOpen = (): SVGElement => icon([
   'M5 19l2.757 -7.351a1 1 0 0 1 .936 -.649h12.307a1 1 0 0 1 .986 1.164l-.996 5.211a2 2 0 0 1 -1.964 1.625h-14.026a2 2 0 0 1 -2 -2v-11a2 2 0 0 1 2 -2h4l3 3h7a2 2 0 0 1 2 2v2',
 ]);

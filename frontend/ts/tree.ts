@@ -1,5 +1,5 @@
 import { clear, createEl } from './dom.js';
-import { iconFile, iconFolder, iconFolderOpen } from './icons.js';
+import { iconFile, iconFolder, iconFolderOpen, iconOutline, iconTrash } from './icons.js';
 import type { OutlineItem, TreeNode } from './types.js';
 
 // ナビゲーション可能な「行」の抽象: ファイル / ディレクトリ / アウトライン見出し
@@ -30,6 +30,8 @@ export interface TreeView {
   getSelectedNode(): TreeNode | null;
   getSelectedKind(): RowKind | null;
   getNavMode(): NavMode;
+  expandSelected(): void;
+  collapseSelected(): void;
   enterOutlineMode(): boolean;
   exitOutlineMode(): boolean;
   requestDeleteSelected(): void;
@@ -95,11 +97,23 @@ export function createTreeView(
       outlineItems.length > 0;
     // アウトライン展開インジケータ (active + outline がある場合のみ表示)
     const indicator = hasOutline
-      ? createEl(
-          'span',
-          { class: 'tree-outline-indicator' },
-          outlineExpanded ? '▾' : '▸',
-        )
+      ? (() => {
+          const btn = createEl('span', { class: 'tree-outline-indicator' });
+          const ic = iconOutline();
+          ic.style.width = '14px';
+          ic.style.height = '14px';
+          if (outlineExpanded) ic.style.opacity = '1';
+          btn.appendChild(ic);
+          btn.addEventListener('click', (ev) => {
+            ev.stopPropagation();
+            outlineExpanded = !outlineExpanded;
+            if (outlineExpanded) navMode = 'outline';
+            else navMode = 'file';
+            buildDom();
+            refreshClasses();
+          });
+          return btn;
+        })()
       : null;
     const nameWrap = createEl(
       'div',
@@ -110,8 +124,8 @@ export function createTreeView(
     const delBtn = createEl(
       'button',
       { class: 'tree-delete', title: 'Delete で削除 (確認あり)' },
-      '×',
     );
+    delBtn.appendChild(iconTrash());
     delBtn.addEventListener('click', (ev) => {
       ev.stopPropagation();
       handlers.onDelete(node);
@@ -322,6 +336,20 @@ export function createTreeView(
     },
     getNavMode() {
       return navMode;
+    },
+    expandSelected() {
+      const row = rows.find((r) => r.key === selectedKey);
+      if (row?.kind === 'dir' && row.node && !expanded.has(row.node.path)) {
+        expanded.add(row.node.path);
+        buildDom();
+      }
+    },
+    collapseSelected() {
+      const row = rows.find((r) => r.key === selectedKey);
+      if (row?.kind === 'dir' && row.node && expanded.has(row.node.path)) {
+        expanded.delete(row.node.path);
+        buildDom();
+      }
     },
     enterOutlineMode() {
       const row = rows.find((r) => r.key === selectedKey);
