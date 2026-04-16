@@ -5,6 +5,7 @@ pub mod directory;
 pub mod finder;
 pub mod markdown;
 pub mod recent;
+pub mod recent_files;
 pub mod search;
 pub mod translate;
 pub mod util;

@@ -1,5 +1,6 @@
 import { createEl } from './dom';
 import { t } from './i18n';
+import { loadHistory, pushTurn, clearHistory } from './ask-history';
 
 // 複数の Ask パネルを管理する Manager。
 // - open() のたびに新しいパネルを DOM に挿入 (排他しない)
@@ -39,6 +40,10 @@ export interface AskOpenOptions {
   /** 開いた時に呼ばれる。返り値は close 時に呼ばれる cleanup。
    *  選択範囲のハイライト overlay などの後始末をここで行う。 */
   onOpen?: () => (() => void) | void;
+  /** 入力欄にあらかじめ入れておく文字列。 */
+  prefill?: string;
+  /** prefill した時に即送信する。 */
+  autoSend?: boolean;
 }
 
 export interface Ask {
@@ -56,6 +61,7 @@ interface PanelHandle {
   el: HTMLElement;
   input: HTMLInputElement;
   focus(): void;
+  submit(): void;
 }
 
 export function createAsk(deps: AskDeps): Ask {
@@ -106,6 +112,13 @@ export function createAsk(deps: AskDeps): Ask {
 
     handle.el.scrollIntoView({ block: 'center', behavior: 'smooth' });
     handle.input.focus({ preventScroll: true });
+
+    if (options?.prefill) {
+      handle.input.value = options.prefill;
+      if (options.autoSend) {
+        handle.submit();
+      }
+    }
   };
 
   return {
@@ -129,6 +142,7 @@ interface TurnHandle {
   addTool(name: string, input: Record<string, unknown> | undefined): void;
   appendText(text: string): void;
   hasText(): boolean;
+  getAnswerText(): string;
   showError(message: string): void;
   finalize(fallbackText?: string): void;
 }
@@ -201,6 +215,9 @@ function createTurn(log: HTMLElement, question: string, deps: AskDeps, root: str
     hasText() {
       return rawText.length > 0;
     },
+    getAnswerText() {
+      return rawText;
+    },
     showError(message) {
       aStatus.hidden = true;
       const errEl = createEl('div', { class: 'ask-a error' });
@@ -268,10 +285,12 @@ function buildPanel(
   onClose: (h: PanelHandle) => void,
   onActivate: (h: PanelHandle) => void,
 ): PanelHandle {
-  let sessionId: string | null = null;
+  // 履歴を先に読み込んで sessionId を復元
+  const history = ctx.path ? loadHistory(ctx.path) : null;
+  let sessionId: string | null = history?.sessionId ?? null;
 
   const badge = createEl('span', { class: 'ask-session-badge' }, t('ask.continuing'));
-  badge.hidden = true;
+  badge.hidden = sessionId == null;
 
   const closeBtn = createEl(
     'button',
@@ -295,6 +314,34 @@ function buildPanel(
 
   const log = createEl('div', { class: 'ask-log' });
 
+  // ─ 履歴の復元 ─
+  let historyBar: HTMLElement | null = null;
+  if (history && history.turns.length > 0) {
+    historyBar = createEl('div', { class: 'ask-history-bar' },
+      createEl('span', { class: 'ask-history-label' }, `${t('ask.history.title')} (${history.turns.length})`),
+      createEl('button', {
+        class: 'ask-history-clear',
+        onClick: () => {
+          clearHistory(ctx.path);
+          if (historyBar) historyBar.remove();
+          log.querySelectorAll('.ask-turn.history').forEach((el) => el.remove());
+          // セッションもリセット (新しい会話として続ける)
+          sessionId = null;
+          badge.hidden = true;
+        },
+      }, t('ask.history.clear')),
+    );
+    log.appendChild(historyBar);
+    for (const ht of history.turns) {
+      const restored = createTurn(log, ht.q, deps, ctx.root);
+      restored.appendText(ht.a);
+      restored.finalize();
+      // 復元した turn に .history クラスを付けて視覚的に区別
+      const last = log.lastElementChild as HTMLElement | null;
+      if (last) last.classList.add('history');
+    }
+  }
+
   const input = createEl('input', {
     class: 'ask-input',
     type: 'text',
@@ -311,12 +358,38 @@ function buildPanel(
 
   const inputRow = createEl('div', { class: 'ask-input-row' }, input, sendBtn);
 
+  // よく使うテンプレート (質問を 1 つも送っていない間だけ表示)
+  const TEMPLATES: Array<{ key: string; text: string }> = [
+    { key: 'ask.tpl.summarize', text: t('ask.tpl.summarize') },
+    { key: 'ask.tpl.explain',   text: t('ask.tpl.explain')   },
+    { key: 'ask.tpl.next',      text: t('ask.tpl.next')      },
+    { key: 'ask.tpl.simple',    text: t('ask.tpl.simple')    },
+  ];
+  const templates = createEl('div', { class: 'ask-templates' });
+  templates.appendChild(createEl('span', { class: 'ask-templates-label' }, t('ask.pickTemplate')));
+  for (const tpl of TEMPLATES) {
+    const chip = createEl('button', {
+      class: 'ask-template-chip',
+      onClick: () => {
+        input.value = tpl.text;
+        input.focus();
+        void send();
+      },
+    }, tpl.text);
+    templates.appendChild(chip);
+  }
+  // 履歴がある (過去に会話した) 場合はチップを最初から隠す
+  if (history && history.turns.length > 0) {
+    templates.hidden = true;
+  }
+
   const panelEl = createEl(
     'div',
     { class: 'ask-panel inline' },
     header,
     quote,
     log,
+    templates,
     inputRow,
   );
 
@@ -324,11 +397,15 @@ function buildPanel(
     el: panelEl,
     input,
     focus: () => input.focus({ preventScroll: true }),
+    submit: () => void send(),
   };
 
   const send = async () => {
     const question = input.value.trim();
     if (!question) return;
+
+    // 最初の送信でテンプレート行を隠す (邪魔にならないように)
+    templates.hidden = true;
 
     const turn = createTurn(log, question, deps, ctx.root);
     input.value = '';
@@ -368,6 +445,13 @@ function buildPanel(
           }
           // done.message には result 全文が入ることがある (stream text が空だった場合の保険)
           turn.finalize(ev.message && !turn.hasText() ? ev.message : undefined);
+          // 履歴に保存 (パスがあれば)
+          if (ctx.path) {
+            const answer = turn.getAnswerText();
+            if (question && answer) {
+              pushTurn(ctx.path, { q: question, a: answer, ts: Date.now() }, sessionId);
+            }
+          }
           unsubscribe();
           finalizeUi();
           break;

@@ -38,6 +38,8 @@ export interface EditorHandle {
   getContent(): string;
   destroy(): void;
   focus(): void;
+  /** カーソル位置に文字列を挿入。挿入後カーソルは末尾へ。 */
+  insertAtCursor(text: string): void;
 }
 
 export interface EditorOptions {
@@ -95,5 +97,13 @@ export function createEditor(container: HTMLElement, opts: EditorOptions): Edito
     getContent: () => view.state.doc.toString(),
     destroy: () => view.destroy(),
     focus: () => view.focus(),
+    insertAtCursor: (text: string) => {
+      const pos = view.state.selection.main.head;
+      view.dispatch({
+        changes: { from: pos, insert: text },
+        selection: { anchor: pos + text.length },
+      });
+      view.focus();
+    },
   };
 }

@@ -1,5 +1,6 @@
 import { clear, createEl } from './dom';
 import { iconFile, iconFolder, iconFolderOpen, iconOutline, iconTrash } from './icons';
+import { t } from './i18n';
 import type { OutlineItem, TreeNode } from './types';
 
 // ナビゲーション可能な「行」の抽象: ファイル / ディレクトリ / アウトライン見出し
@@ -16,6 +17,8 @@ export interface TreeViewHandlers {
   onOpen: (node: TreeNode) => void;
   onDelete: (node: TreeNode) => void;
   onJumpHeading: (anchorId: string) => void;
+  onContextMenu?: (node: TreeNode, ev: MouseEvent) => void;
+  onMoveFile?: (src: TreeNode, dstDir: TreeNode) => void;
 }
 
 export type NavMode = 'file' | 'outline';
@@ -123,7 +126,7 @@ export function createTreeView(
     );
     const delBtn = createEl(
       'button',
-      { class: 'tree-delete', title: 'Delete で削除 (確認あり)' },
+      { class: 'tree-delete', title: t('delete.title') },
     );
     delBtn.appendChild(iconTrash());
     delBtn.addEventListener('click', (ev) => {
@@ -151,6 +154,26 @@ export function createTreeView(
     }
     if (indicator) el.appendChild(indicator);
     el.appendChild(delBtn);
+    // 右クリックメニュー + 選択状態もついでに更新
+    el.addEventListener('contextmenu', (ev) => {
+      ev.preventDefault();
+      selectedKey = node.path;
+      refreshClasses();
+      handlers.onContextMenu?.(node, ev);
+    });
+    // D&D: ファイルをドラッグ可能にし、ディレクトリ先へドロップ (app 側で rename_file 呼ぶ)
+    if (handlers.onMoveFile) {
+      el.draggable = true;
+      el.addEventListener('dragstart', (ev) => {
+        if (!ev.dataTransfer) return;
+        ev.dataTransfer.setData('application/x-askmd-path', node.path);
+        ev.dataTransfer.effectAllowed = 'move';
+        el.classList.add('dragging');
+      });
+      el.addEventListener('dragend', () => {
+        el.classList.remove('dragging');
+      });
+    }
     rows.push({ kind: 'file', key: node.path, node, el });
     return el;
   };
@@ -195,6 +218,32 @@ export function createTreeView(
         createEl('span', { class: 'tree-name' }, node.name),
       ),
     );
+    headerEl.addEventListener('contextmenu', (ev) => {
+      ev.preventDefault();
+      handlers.onContextMenu?.(node, ev);
+    });
+    // ドロップ先として受け入れる
+    if (handlers.onMoveFile) {
+      headerEl.addEventListener('dragover', (ev) => {
+        if (!ev.dataTransfer) return;
+        if (!ev.dataTransfer.types.includes('application/x-askmd-path')) return;
+        ev.preventDefault();
+        ev.dataTransfer.dropEffect = 'move';
+        headerEl.classList.add('drop-target');
+      });
+      headerEl.addEventListener('dragleave', () => {
+        headerEl.classList.remove('drop-target');
+      });
+      headerEl.addEventListener('drop', (ev) => {
+        headerEl.classList.remove('drop-target');
+        const src = ev.dataTransfer?.getData('application/x-askmd-path');
+        if (!src) return;
+        ev.preventDefault();
+        ev.stopPropagation();
+        const srcRow = rows.find((r) => r.kind === 'file' && r.node?.path === src);
+        if (srcRow?.node) handlers.onMoveFile!(srcRow.node, node);
+      });
+    }
     rows.push({ kind: 'dir', key: node.path, node, el: headerEl });
     const wrapper = createEl('div', { class: 'tree-group' }, headerEl);
 
