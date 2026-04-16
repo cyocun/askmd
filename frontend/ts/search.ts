@@ -95,7 +95,7 @@ export function createSearch(
       if (seq !== reqSeq) return;
       hits = [];
       activeIdx = 0;
-      status.textContent = `エラー: ${String(e)}`;
+      status.textContent = t('search.error', String(e));
       redraw();
     }
   };

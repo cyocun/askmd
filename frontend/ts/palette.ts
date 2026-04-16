@@ -34,7 +34,7 @@ export function createPalette(onSelect: (node: TreeNode) => void): Palette {
   let filtered: TreeNode[] = [];
   let activeIdx = 0;
 
-  const shortPath = (full: string, rootDrop = 0): string => {
+  const shortPath = (full: string): string => {
     const parts = full.split('/').filter(Boolean);
     const slice = parts.slice(Math.max(0, parts.length - 3));
     return slice.join(' / ');

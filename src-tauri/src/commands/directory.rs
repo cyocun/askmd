@@ -1,3 +1,4 @@
+use super::util;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::io::{BufRead, BufReader};
@@ -14,15 +15,6 @@ pub struct TreeNode {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub title: Option<String>,
     pub children: Option<Vec<TreeNode>>,
-}
-
-fn should_skip_dir(name: &str) -> bool {
-    // 隠しディレクトリ + よくあるノイズ。ユーザー docs の "正味" を浮かび上がらせる。
-    name.starts_with('.')
-        || matches!(
-            name,
-            "node_modules" | "target" | "dist" | "build" | "vendor" | ".git"
-        )
 }
 
 // ファイル先頭 100 行を読み、frontmatter title か最初の `# 見出し` を返す。
@@ -76,8 +68,7 @@ fn scan(path: &Path) -> Option<TreeNode> {
     let path_str = path.to_string_lossy().into_owned();
 
     if path.is_file() {
-        let ext = path.extension().and_then(|e| e.to_str());
-        if matches!(ext, Some("md") | Some("markdown") | Some("mdown") | Some("mkd")) {
+        if util::is_markdown(path) {
             return Some(TreeNode {
                 name,
                 path: path_str,
@@ -89,7 +80,7 @@ fn scan(path: &Path) -> Option<TreeNode> {
         return None;
     }
 
-    if should_skip_dir(&name) {
+    if util::should_skip_dir(&name) {
         return None;
     }
 

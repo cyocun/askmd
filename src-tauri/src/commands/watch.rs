@@ -1,3 +1,4 @@
+use super::util;
 use notify::{Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use std::path::PathBuf;
 use std::sync::Mutex;
@@ -41,12 +42,7 @@ pub async fn start_watch(
         let changed: Vec<String> = event
             .paths
             .iter()
-            .filter(|p| {
-                p.extension()
-                    .and_then(|e| e.to_str())
-                    .map(|e| matches!(e, "md" | "markdown" | "mdown" | "mkd"))
-                    .unwrap_or(false)
-            })
+            .filter(|p| util::is_markdown(p))
             .map(|p| p.to_string_lossy().into_owned())
             .collect();
         if !changed.is_empty() {

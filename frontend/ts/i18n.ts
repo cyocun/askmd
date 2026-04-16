@@ -15,6 +15,7 @@ const translations: Record<string, Record<Lang, string>> = {
   'search.searching': { ja: '検索中…', en: 'Searching…' },
   'search.noMatch': { ja: 'マッチなし', en: 'No matches' },
   'search.results': { ja: '{0} 件 (上限 200)', en: '{0} results (max 200)' },
+  'search.error': { ja: 'エラー: {0}', en: 'Error: {0}' },
   // ─ Toolbar titles ─
   'tb.sidebar': { ja: 'サイドバー (⌘B)', en: 'Sidebar (⌘B)' },
   'tb.search': { ja: '全文検索 (⌘F)', en: 'Search (⌘F)' },

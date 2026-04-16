@@ -93,7 +93,6 @@ function highlightInline(state: any, silent: boolean): boolean {
   if (!silent) {
     const token = state.push('mark_open', 'mark', 1);
     token.markup = '==';
-    state.md.inline.tokenize(state);
     const content = state.src.slice(start, end);
     const t = state.push('text', '', 0);
     t.content = content;

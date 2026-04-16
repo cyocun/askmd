@@ -37,7 +37,6 @@ fn main() {
             commands::directory::trash_file,
             commands::directory::restore_file,
             commands::markdown::read_markdown,
-            commands::claude::ask_claude_stream,
             commands::ai::ask_ai_stream,
             commands::ai::get_ai_providers,
             commands::ai::get_active_provider,

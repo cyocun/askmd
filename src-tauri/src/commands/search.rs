@@ -1,3 +1,4 @@
+use super::util;
 use serde::Serialize;
 use std::collections::HashMap;
 use std::fs;
@@ -11,19 +12,6 @@ pub struct SearchHit {
     pub snippet: String,
 }
 
-fn should_skip_dir(name: &str) -> bool {
-    name.starts_with('.')
-        || matches!(
-            name,
-            "node_modules" | "target" | "dist" | "build" | "vendor" | ".git"
-        )
-}
-
-fn is_markdown(p: &Path) -> bool {
-    let ext = p.extension().and_then(|e| e.to_str());
-    matches!(ext, Some("md") | Some("markdown") | Some("mdown") | Some("mkd"))
-}
-
 /// root ごとにファイル内容をメモリキャッシュ
 struct FileCache {
     files: HashMap<String, String>,
@@ -34,7 +22,7 @@ static FILE_CACHE: std::sync::LazyLock<Mutex<HashMap<String, FileCache>>> =
 
 fn collect_md_files(dir: &Path, out: &mut Vec<PathBuf>) {
     if dir.is_file() {
-        if is_markdown(dir) {
+        if util::is_markdown(dir) {
             out.push(dir.to_path_buf());
         }
         return;
@@ -42,7 +30,7 @@ fn collect_md_files(dir: &Path, out: &mut Vec<PathBuf>) {
     let Some(name) = dir.file_name().and_then(|n| n.to_str()) else {
         return;
     };
-    if should_skip_dir(name) {
+    if util::should_skip_dir(name) {
         return;
     }
     let Ok(entries) = fs::read_dir(dir) else {

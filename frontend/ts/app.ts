@@ -479,17 +479,17 @@ function renderDoc(
   renderedHtml: string,
   header: HTMLElement | null,
 ): void {
-  // 現在の DOM を退避
-  saveDomSnapshot();
+  const prevPath = docContent.dataset.path || '';
+
+  // 別ファイルへの切替時のみ現在の DOM を退避。
+  // 同一ファイルの再レンダリング (fs-changed 後) では旧 DOM を保存しない —
+  // 保存すると直後の restoreDomSnapshot で古い内容が復元されてしまう。
+  if (prevPath && prevPath !== path) {
+    saveDomSnapshot();
+  }
 
   // キャッシュに DOM があればそちらを復元
   if (restoreDomSnapshot(path)) {
-    // ヘッダーだけ再構築 (modified 等が変わる可能性)
-    if (header) {
-      clear(docHeader);
-      docHeader.appendChild(header);
-      docHeader.classList.remove('empty');
-    }
     return;
   }
 
@@ -516,18 +516,10 @@ function renderDoc(
     } catch {}
   });
 
-  // 外部リンクは新規タブ、.md 相対リンクは内部遷移
+  // .md 相対リンクは内部遷移（外部リンクはグローバルハンドラで処理）
   body.querySelectorAll('a').forEach((a) => {
     const href = a.getAttribute('href') || '';
-    if (!href) return;
-    if (/^https?:/.test(href)) {
-      a.addEventListener('click', (ev) => {
-        ev.preventDefault();
-        void invoke('open_url', { url: href });
-      });
-      return;
-    }
-    if (href.startsWith('#')) return;
+    if (!href || /^https?:/.test(href) || href.startsWith('#')) return;
     a.addEventListener('click', (ev) => {
       ev.preventDefault();
       const resolved = href.startsWith('/') ? href : `${dir}/${href}`;
@@ -986,6 +978,17 @@ providerBtn.addEventListener('click', (ev) => {
 // メニュー外クリックで閉じる
 document.addEventListener('click', () => {
   providerMenu.hidden = true;
+});
+
+// 外部リンク (http/https) はデフォルトブラウザで開く（WebView 内遷移を防止）
+document.addEventListener('click', (ev) => {
+  const a = (ev.target as HTMLElement).closest('a');
+  if (!a) return;
+  const href = a.getAttribute('href') || '';
+  if (/^https?:/.test(href)) {
+    ev.preventDefault();
+    void invoke('open_url', { url: href });
+  }
 });
 
 // ─── 最近開いたディレクトリを emptyState に表示 ───
