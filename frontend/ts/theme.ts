@@ -1,4 +1,5 @@
 import { byId, createEl, clear } from './dom.js';
+import { reinitMermaidTheme } from './renderer.js';
 
 export type ThemeId = 'github-light' | 'github-dark' | 'solarized-light' | 'solarized-dark';
 
@@ -29,6 +30,7 @@ export function applyTheme(id: ThemeId): void {
   const def = THEMES.find((t) => t.id === id);
   if (def) activateHljsTheme(def.hljs);
   localStorage.setItem(STORAGE_KEY, id);
+  reinitMermaidTheme();
 }
 
 export function currentTheme(): ThemeId {
