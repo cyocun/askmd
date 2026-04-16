@@ -6,6 +6,7 @@
   --bg-surface: #ffffff;
   --bg-hover: #f0f0f2;
   --bg-selected: #e0e4ef;
+  --bg-selected-focus: #0960d6;
   --bg-code: #f5f5f7;
   --border: #dcdce0;
   --border-subtle: #ebebef;
@@ -26,6 +27,7 @@
   --bg-surface: #25252a;
   --bg-hover: #2d2d33;
   --bg-selected: #3a3a42;
+  --bg-selected-focus: #2563d4;
   --bg-code: #1a1a1e;
   --border: #35353c;
   --border-subtle: #2a2a30;
@@ -46,6 +48,7 @@
   --bg-surface: #eee8d5;
   --bg-hover: #e8e1cc;
   --bg-selected: #d6cdb7;
+  --bg-selected-focus: #268bd2;
   --bg-code: #eee8d5;
   --border: #d3cbb7;
   --border-subtle: #ddd6c1;
@@ -66,6 +69,7 @@
   --bg-surface: #073642;
   --bg-hover: #0a4050;
   --bg-selected: #1a5060;
+  --bg-selected-focus: #268bd2;
   --bg-code: #073642;
   --border: #1a4a5a;
   --border-subtle: #0d3d4d;
@@ -105,13 +109,18 @@ body {
     "title title"
     "left  right";
 }
+body.sidebar-collapsed {
+  grid-template-columns: 0 1fr;
+}
+body.sidebar-collapsed #leftPane {
+  display: none;
+}
 
 /* ─────────── タイトルバー (全幅 drag) ─────────── */
 #titleBar {
   grid-area: title;
   -webkit-app-region: drag;
   background: var(--bg-surface);
-  border-bottom: 1px solid var(--border-subtle);
   display: flex;
   align-items: center;
   justify-content: flex-end;
@@ -119,6 +128,39 @@ body {
 }
 /* ボタン・入力は drag 対象から除外 (通常クリックを可能にする) */
 button, input, textarea, select, a { -webkit-app-region: no-drag; }
+/* フォーカスリングを統一: マウス操作時は非表示、キーボード時のみ控えめに */
+:focus { outline: none; }
+:focus-visible { outline: 1.5px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+
+/* ─── ツールバー ─── */
+#toolbar {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: 80px;
+}
+.tb-btn {
+  width: 26px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--text-faint);
+  border-radius: 5px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.12s;
+}
+.tb-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+.tb-btn svg {
+  width: 15px;
+  height: 15px;
+}
 
 /* ─── プロバイダーセレクター ─── */
 #providerSelector {
@@ -145,9 +187,9 @@ button, input, textarea, select, a { -webkit-app-region: no-drag; }
 }
 #providerMenu {
   position: absolute;
-  top: 100%;
-  right: 0;
-  margin-top: 4px;
+  bottom: 100%;
+  left: 0;
+  margin-bottom: 4px;
   background: var(--bg-surface);
   border: 1px solid var(--border);
   border-radius: 6px;
@@ -215,13 +257,13 @@ button, input, textarea, select, a { -webkit-app-region: no-drag; }
 #themeMenu {
   position: absolute;
   bottom: 100%;
-  left: 0;
+  right: 0;
   margin-bottom: 4px;
   background: var(--bg-surface);
   border: 1px solid var(--border);
   border-radius: 8px;
   padding: 4px;
-  min-width: 160px;
+  min-width: 180px;
   z-index: 900;
   box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
 }
@@ -230,12 +272,13 @@ button, input, textarea, select, a { -webkit-app-region: no-drag; }
   width: 100%;
   background: none;
   border: none;
-  border-radius: 4px;
+  border-radius: 6px;
   color: var(--text);
-  font-size: 12px;
-  padding: 5px 10px;
+  font-size: 13px;
+  padding: 6px 12px;
   cursor: pointer;
   text-align: left;
+  white-space: nowrap;
 }
 .theme-item:hover {
   background: var(--bg-hover);
@@ -264,7 +307,7 @@ code {
 #leftPane {
   grid-area: left;
   display: grid;
-  grid-template-rows: 44px auto 1fr 36px;
+  grid-template-rows: 48px auto 1fr 40px;
   background: var(--bg-surface);
   border-right: 1px solid var(--border);
   min-height: 0;
@@ -272,17 +315,17 @@ code {
 }
 
 #searchBar {
-  padding: 6px 10px 8px;
+  padding: 8px 10px;
   display: grid;
 }
 
 #filterInput, #paletteInput, .ask-input {
   background: var(--bg);
   border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 5px 10px;
+  border-radius: 8px;
+  padding: 7px 12px;
   color: var(--text);
-  font-size: 12.5px;
+  font-size: 13px;
   outline: none;
   min-width: 0;
 }
@@ -293,11 +336,11 @@ code {
 }
 
 #rootLabel {
-  padding: 2px 12px 6px;
-  font-size: 10.5px;
+  padding: 2px 14px 6px;
+  font-size: 11px;
   color: var(--text-faint);
   font-weight: 600;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.03em;
   text-transform: uppercase;
   white-space: nowrap;
   overflow: hidden;
@@ -310,37 +353,57 @@ code {
   padding: 0 6px 8px;
 }
 
-/* Tab でフォーカスされたペインを示すインジケータ */
+/* ペインのフォーカス: リングなし (選択アイテムの色で判別、Finder 方式) */
 #treeContainer:focus,
-#docContent:focus {
-  outline: 2px solid var(--accent);
-  outline-offset: -2px;
-}
 #treeContainer:focus-visible,
+#docContent:focus,
 #docContent:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: -2px;
+  outline: none;
+}
+/* ツリーにフォーカスがある時: Finder と同じくブルー背景 + 白文字 */
+body.focus-tree .tree-node.selected {
+  background: var(--bg-selected-focus);
+  color: #fff;
+}
+body.focus-tree .tree-node.selected .tree-title {
+  color: rgba(255, 255, 255, 0.7);
+}
+body.focus-tree .tree-node.selected .tree-icon {
+  color: #fff;
+}
+body.focus-tree .tree-node.selected .tree-delete {
+  color: rgba(255, 255, 255, 0.6);
+}
+body.focus-tree .tree-node.selected .tree-outline-indicator {
+  color: rgba(255, 255, 255, 0.7);
 }
 
 #leftFooter {
   border-top: 1px solid var(--border-subtle);
-  padding: 4px 8px;
+  padding: 6px 10px;
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
+  gap: 2px;
+}
+#langBtn {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 6px;
+  color: var(--text-faint);
 }
 
 /* ─────────── ツリー ─────────── */
 .tree-node {
   display: grid;
-  grid-template-columns: auto 1fr auto;
+  grid-template-columns: auto 1fr auto auto;
   align-items: center;
-  column-gap: 6px;
-  padding: 6px 8px;
-  border-radius: 4px;
+  column-gap: 8px;
+  padding: 7px 10px;
+  border-radius: 6px;
   cursor: default;
   user-select: none;
-  font-size: 12.5px;
+  font-size: 13px;
   color: var(--text-secondary);
   min-width: 0;
   position: relative;
@@ -389,19 +452,22 @@ code {
 
 /* バツアイコン (削除ボタン) — hover か selected / confirm 時だけ出す */
 .tree-delete {
-  width: 18px;
-  height: 18px;
+  grid-column: 4;
+  width: 20px;
+  height: 20px;
   border: none;
   background: transparent;
   color: var(--text-faint);
-  font-size: 14px;
-  line-height: 1;
   cursor: pointer;
   border-radius: 3px;
   display: none;
   align-items: center;
   justify-content: center;
-  padding: 0;
+  padding: 2px;
+}
+.tree-delete .tree-icon {
+  width: 13px;
+  height: 13px;
 }
 .tree-node:hover .tree-delete,
 .tree-node.selected .tree-delete,
@@ -411,14 +477,19 @@ code {
 
 /* ▸ / ▾ アウトライン展開インジケータ (active + outline あり のファイルのみ表示) */
 .tree-outline-indicator {
-  font-size: 10px;
   color: var(--text-faint);
-  width: 14px;
-  text-align: center;
+  width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   flex-shrink: 0;
   cursor: pointer;
+  border-radius: 3px;
+  opacity: 0.6;
 }
-.tree-node.active .tree-outline-indicator { color: var(--accent); }
+.tree-outline-indicator:hover { opacity: 1; background: var(--bg-hover); }
+.tree-node.active .tree-outline-indicator { color: var(--accent); opacity: 0.8; }
 
 /* アウトライン (アクティブファイル配下の見出しリスト) */
 .tree-outline {
@@ -470,61 +541,113 @@ code {
 }
 
 #docHeader {
-  padding: 4px 24px 10px;
+  padding: 8px 32px;
   min-height: 0;
   display: grid;
   gap: 4px;
+  border-bottom: 1px solid var(--border-subtle);
 }
 #docHeader.empty { display: none; }
+.doc-heading {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  letter-spacing: -0.01em;
+}
+.doc-info-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
 .doc-title {
-  font-size: 13px;
+  font-size: 12px;
   color: var(--text-faint);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  min-width: 0;
+  cursor: pointer;
+  border-radius: 4px;
+  padding: 1px 4px;
+}
+.doc-title:hover {
+  background: var(--bg-hover);
+  color: var(--text-secondary);
+}
+.doc-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+  margin-left: auto;
+}
+.doc-action-btn {
+  background: none;
+  border: 1px solid transparent;
+  color: var(--text-faint);
+  cursor: pointer;
+  border-radius: 6px;
+  padding: 4px 10px;
+  font-size: 12px;
+  font-family: inherit;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  transition: background 0.12s, border-color 0.12s;
+}
+.doc-action-btn:hover {
+  background: var(--bg-hover);
+  border-color: var(--border);
+  color: var(--text);
+}
+.doc-action-btn svg {
+  width: 14px;
+  height: 14px;
 }
 .doc-meta {
   display: flex;
   gap: 6px;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   font-size: 11px;
-  color: var(--text-secondary);
+  color: var(--text-faint);
+  flex-shrink: 0;
 }
 .doc-meta-tag {
   background: var(--tag-bg);
-  padding: 2px 7px;
-  border-radius: 10px;
+  padding: 2px 8px;
+  border-radius: 8px;
+}
+.doc-sep {
+  color: var(--border);
+  margin: 0 2px;
 }
 
 #docContent {
   overflow-y: auto;
-  padding: 16px 32px 80px;
+  padding: 0 32px 80px;
   min-height: 0;
   min-width: 0;
   line-height: 1.7;
+  position: relative;
 }
 
 #emptyState {
   max-width: 520px;
   margin: 0 auto;
-  padding: 100px 24px 40px;
+  padding: 24px;
   color: var(--text-secondary);
   text-align: center;
-}
-#emptyState h1 {
-  font-size: 38px;
-  margin: 0 0 6px;
-  color: var(--text);
-  font-weight: 300;
-  letter-spacing: -0.02em;
-}
-#emptyState .empty-sub {
-  font-size: 13.5px;
-  margin: 0 0 28px;
-  color: var(--text-faint);
+  /* 上下中央 */
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
 }
 #emptyState .empty-hint {
-  margin: 18px 0 0;
+  margin: 14px 0 0;
   font-size: 12px;
   color: var(--text-faint);
 }
@@ -541,10 +664,19 @@ code {
 }
 
 /* ─── 最近開いたディレクトリ (empty state) ─── */
+.recent-heading {
+  margin-top: 28px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-faint);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  text-align: left;
+}
 .recent-list {
   list-style: none;
   padding: 0;
-  margin: 24px 0 0;
+  margin: 8px 0 0;
   text-align: left;
 }
 .recent-list li {
@@ -580,26 +712,8 @@ code {
   white-space: nowrap;
 }
 
-/* ─── 翻訳ボタン (doc-header) ─── */
-.translate-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 3px 10px;
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  background: var(--bg-surface);
-  color: var(--text-secondary);
-  font-size: 11.5px;
-  cursor: pointer;
-  margin-left: 8px;
-  white-space: nowrap;
-}
-.translate-btn:hover {
-  background: var(--bg-hover);
-  color: var(--text);
-}
-.translate-btn.loading {
+/* ─── doc-action loading 状態 ─── */
+.doc-action-btn.loading {
   opacity: 0.5;
   pointer-events: none;
 }
@@ -650,7 +764,10 @@ code {
   max-width: 780px;
   margin: 0 auto;
   position: relative; /* .ask-highlight を相対配置するため */
+  overflow-wrap: break-word;
 }
+/* 見出しごとのセクション。sticky の入れ替わりを可能にする */
+.md-section {}
 
 /* Ask パネルを開いた時の「引用元」ハイライト。
    range.getClientRects() の矩形ごとに生成される。pre/コードブロック内も含む。 */
@@ -664,9 +781,19 @@ code {
 .md-body h1, .md-body h2, .md-body h3, .md-body h4 {
   color: var(--text);
   font-weight: 600;
-  margin-top: 1.6em;
-  margin-bottom: 0.6em;
+  margin: 0 0 0.6em;
+  padding: 0;
   letter-spacing: -0.01em;
+  position: sticky;
+  top: 0;
+  background: var(--bg);
+  z-index: 10;
+}
+.md-section {
+  padding-top: 1.2em;
+}
+.md-section:first-child {
+  padding-top: 0;
 }
 .md-body h1 { font-size: 1.8em; border-bottom: 1px solid var(--border-subtle); padding-bottom: 0.3em; }
 .md-body h2 { font-size: 1.4em; border-bottom: 1px solid var(--border-subtle); padding-bottom: 0.25em; }
@@ -717,6 +844,152 @@ code {
 .md-body th { background: var(--bg-hover); font-weight: 600; }
 .md-body hr { border: none; border-top: 1px solid var(--border-subtle); margin: 1.8em 0; }
 .md-body img { max-width: 100%; border-radius: 4px; }
+
+/* ─── タスクリスト (チェックボックス) ─── */
+.md-body .task-list-item {
+  list-style: none;
+  margin-left: -1.2em;
+}
+.md-body .task-list-item input[type="checkbox"] {
+  margin-right: 6px;
+  vertical-align: middle;
+  accent-color: var(--accent);
+  width: 14px;
+  height: 14px;
+}
+
+/* ─── GitHub Admonitions (> [!NOTE] 等) ─── */
+.md-body .admonition {
+  border-left-width: 4px;
+  border-radius: 0;
+  padding: 10px 14px;
+  background: var(--bg-surface);
+}
+.md-body .admonition-title {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 0.9em;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+.md-body .admonition-note {
+  border-color: var(--accent);
+}
+.md-body .admonition-note .admonition-title { color: var(--accent); }
+.md-body .admonition-tip {
+  border-color: #3fb950;
+}
+.md-body .admonition-tip .admonition-title { color: #3fb950; }
+.md-body .admonition-important {
+  border-color: #a371f7;
+}
+.md-body .admonition-important .admonition-title { color: #a371f7; }
+.md-body .admonition-warning {
+  border-color: #d29922;
+}
+.md-body .admonition-warning .admonition-title { color: #d29922; }
+.md-body .admonition-caution {
+  border-color: #f85149;
+}
+.md-body .admonition-caution .admonition-title { color: #f85149; }
+
+/* ─── 脚注 ─── */
+.md-body .footnote-ref { font-size: 0.8em; vertical-align: super; }
+.md-body .footnotes { font-size: 0.9em; color: var(--text-secondary); border-top: 1px solid var(--border-subtle); margin-top: 2em; padding-top: 1em; }
+
+/* ─── details/summary ─── */
+.md-body details {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 12px;
+  margin: 0.8em 0;
+}
+.md-body summary {
+  cursor: pointer;
+  font-weight: 600;
+  color: var(--text);
+}
+.md-body details[open] summary {
+  margin-bottom: 8px;
+}
+
+/* ─── mark (ハイライト) ─── */
+.md-body mark {
+  background: rgba(255, 200, 0, 0.3);
+  padding: 1px 3px;
+  border-radius: 2px;
+}
+
+/* ─────────── Mermaid ダイアグラム ─────────── */
+.mermaid-wrap {
+  position: relative;
+  margin: 0.8em 0;
+  z-index: 1;
+}
+.mermaid-expand {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 26px;
+  height: 26px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--bg-surface);
+  color: var(--text-faint);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 0.15s;
+  z-index: 4;
+}
+.mermaid-wrap:hover .mermaid-expand { opacity: 1; }
+.mermaid-expand:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+.mermaid-expand svg {
+  width: 14px;
+  height: 14px;
+}
+
+/* フルスクリーン表示 */
+#mermaidFullscreen {
+  position: fixed;
+  inset: 0;
+  z-index: 400;
+  background: var(--bg);
+  display: grid;
+  place-items: center;
+  overflow: auto;
+  padding: 40px;
+  cursor: zoom-out;
+}
+#mermaidFullscreen svg {
+  max-width: 100%;
+  max-height: 100%;
+}
+#mermaidFullscreenClose {
+  position: fixed;
+  top: 16px;
+  right: 16px;
+  z-index: 401;
+  width: 32px;
+  height: 32px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-surface);
+  color: var(--text);
+  font-size: 18px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+#mermaidFullscreenClose:hover {
+  background: var(--bg-hover);
+}
 
 /* ─────────── Ask パネル (Chat インライン, 複数可) ───────────
    選択ブロックの直後に DOM 挿入されて本文の流れに乗る。
@@ -831,39 +1104,97 @@ code {
 }
 .ask-turn {
   display: grid;
-  gap: 4px;
+  gap: 8px;
 }
-.ask-q {
-  font-size: 12.5px;
-  color: var(--text);
-  font-weight: 500;
+/* ─ 共通メッセージ行 (バッジ + コンテンツ) ─ */
+.ask-msg {
+  display: grid;
+  grid-template-columns: 24px 1fr;
+  gap: 8px;
+  align-items: start;
 }
-.ask-q::before {
-  content: "Q";
-  display: inline-block;
-  width: 16px;
-  height: 16px;
-  line-height: 16px;
+/* ─ 共通バッジ (You / AI) ─ */
+.ask-badge {
+  width: 24px;
+  height: 24px;
+  line-height: 24px;
   text-align: center;
-  font-size: 10px;
+  font-size: 9px;
   font-weight: 700;
+  letter-spacing: 0.02em;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #fff;
+  box-sizing: border-box;
+  margin-top: 1px;
+}
+.ask-badge-ai {
   background: var(--bg-hover);
   color: var(--text-secondary);
-  border-radius: 4px;
-  margin-right: 6px;
+  border: 1px solid var(--border);
+  line-height: 22px;
+}
+/* ─ ユーザーメッセージ ─ */
+.ask-q-text {
+  font-size: 13px;
+  color: var(--text);
+  font-weight: 500;
+  padding: 4px 0;
+}
+.ask-a-body {
+  min-width: 0;
+  flex: 1;
 }
 .ask-a {
   font-size: 13px;
   color: var(--text);
   white-space: pre-wrap;
   line-height: 1.6;
-  padding-left: 22px;
 }
-.ask-a.loading::after {
-  content: "…";
-  animation: pulse 1.2s infinite;
+.ask-a-status {
+  font-size: 11.5px;
   color: var(--text-faint);
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
+.ask-a-status:empty { display: none; }
+.ask-a-spinner {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border: 2px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.ask-a.loading .ask-a-status::after { content: none; }
+.ask-a.error .ask-a-status { display: none; }
+/* Ask パネル内の md-body: コンパクトに */
+.ask-a.md-body {
+  font-size: 13px;
+  max-width: none;
+  position: static;
+  white-space: normal;
+}
+.ask-a.md-body p { margin: 0.4em 0; }
+.ask-a.md-body p:first-child { margin-top: 0; }
+.ask-a.md-body p:last-child { margin-bottom: 0; }
+.ask-a.md-body h1, .ask-a.md-body h2,
+.ask-a.md-body h3, .ask-a.md-body h4 {
+  position: static;
+  font-size: 1em;
+  padding: 0;
+  margin: 0.6em 0 0.3em;
+  box-shadow: none;
+  border: none;
+}
+.ask-a.md-body pre { font-size: 12px; margin: 0.4em 0; }
+.ask-a.md-body blockquote { margin: 0.4em 0; }
+.ask-a.md-body ul, .ask-a.md-body ol { margin: 0.3em 0; }
+.ask-a.md-body .md-section { margin-top: 0; }
+.ask-a.md-body .md-section + .md-section { margin-top: 0.3em; }
 .ask-a.error { color: #e57373; }
 .ask-input-row {
   display: grid;
@@ -1032,6 +1363,62 @@ code {
   0% { opacity: 0; }
   10%, 70% { opacity: 1; }
   100% { opacity: 0; }
+}
+
+/* ─────────── 翻訳済みテキスト + ツールチップ ─────────── */
+[data-original-text] {
+  cursor: help;
+}
+#translateTooltip {
+  position: fixed;
+  z-index: 500;
+  max-width: 420px;
+  max-height: 180px;
+  overflow-y: auto;
+  padding: 8px 12px;
+  background: var(--toast-bg);
+  color: #eee;
+  border: 1px solid var(--toast-border);
+  border-radius: 6px;
+  font-size: 12.5px;
+  line-height: 1.6;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
+  white-space: pre-wrap;
+  word-break: break-word;
+  pointer-events: none;
+}
+
+/* ─────────── 選択時 Ask ボタン ─────────── */
+#selectionAskBtn {
+  position: fixed;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  font-size: 11.5px;
+  font-family: inherit;
+  font-weight: 500;
+  cursor: pointer;
+  box-shadow: 0 3px 12px rgba(0, 0, 0, 0.25);
+  white-space: nowrap;
+  pointer-events: auto;
+  animation: sel-btn-in 0.1s ease;
+}
+#selectionAskBtn:hover {
+  filter: brightness(1.15);
+}
+#selectionAskBtn svg {
+  width: 14px;
+  height: 14px;
+}
+@keyframes sel-btn-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 /* ─────────── Toast ─────────── */

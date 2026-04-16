@@ -5,8 +5,9 @@ import { createPalette } from './palette.js';
 import { createSearch } from './search.js';
 import type { SearchHit } from './search.js';
 import { createTreeView } from './tree.js';
-import { extractTitle, parseFrontmatter, render, renderMermaidBlocks } from './renderer.js';
+import { extractTitle, parseFrontmatter, processAdmonitions, render, renderMermaidBlocks } from './renderer.js';
 import { initTheme } from './theme.js';
+import { initLang, getLang, toggleLang, t } from './i18n.js';
 import type { OutlineItem, TreeNode } from './types.js';
 
 const TAURI = (window as any).__TAURI__;
@@ -34,6 +35,13 @@ interface RecentDir {
 let currentRoot: { path: string; tree: TreeNode } | null = null;
 let currentFile: string | null = null;
 const cache = new Map<string, { rendered: string; title: string; fmHtml: HTMLElement | null }>();
+// レンダリング済み DOM をファイルパスごとに保持 (スクロール位置・Ask パネル含む)
+interface DomSnapshot {
+  header: DocumentFragment;
+  body: HTMLElement;        // docContent の中身
+  scrollTop: number;
+}
+const domCache = new Map<string, DomSnapshot>();
 let activeProviderName = 'Claude';
 let aiAvailable = false; // どれか1つでも AI プロバイダーが利用可能か
 
@@ -42,7 +50,6 @@ const treeContainer = byId('treeContainer');
 const rootLabel = byId('rootLabel');
 const docHeader = byId('docHeader');
 const docContent = byId('docContent');
-const openBtn = byId('openBtn') as HTMLButtonElement;
 const filterInput = byId('filterInput') as HTMLInputElement;
 const toast = byId('toast');
 const dropOverlay = byId('dropOverlay');
@@ -99,6 +106,28 @@ function highlightRange(range: Range): () => void {
   return () => overlays.forEach((o) => o.remove());
 }
 
+// 見出しごとに <section> でラップして sticky の入れ替わりを実現する。
+// sticky 要素は親の範囲内でのみ固定されるため、
+// セクション分割しないとすべての見出しが .md-body 末尾までずっと sticky になる。
+function wrapSections(body: HTMLElement): void {
+  const children = Array.from(body.childNodes);
+  let section: HTMLElement | null = null;
+
+  for (const child of children) {
+    const el = child as HTMLElement;
+    const isHeading = child.nodeType === Node.ELEMENT_NODE && /^H[1-4]$/.test(el.tagName);
+    if (isHeading) {
+      section = document.createElement('section');
+      section.className = 'md-section';
+      body.insertBefore(section, child);
+      section.appendChild(child);
+    } else if (section) {
+      section.appendChild(child);
+    }
+    // 見出し前のコンテンツ (section === null) はそのまま body 直下に残る
+  }
+}
+
 // sanitize 済み HTML を DOMParser 経由で挿入する。
 // markdown-it の生成結果は render() 内で DOMPurify に通してから渡る。
 function insertSanitizedHtml(host: HTMLElement, html: string): void {
@@ -137,6 +166,7 @@ const ask = createAsk({
     };
   },
   getProviderName: () => activeProviderName,
+  renderMarkdown: (md) => render(md),
 });
 
 // ─── ツリー ───
@@ -170,7 +200,7 @@ async function deleteMd(path: string): Promise<void> {
     const content = (await invoke('trash_file', { path })) as string;
     deleteUndoStack.push({ path, content });
     if (deleteUndoStack.length > 10) deleteUndoStack.shift();
-    showToast('削除しました (⌘Z で戻す)');
+    showToast(t('toast.deleted'));
     if (currentFile === path) {
       currentFile = null;
       clear(docHeader);
@@ -179,31 +209,31 @@ async function deleteMd(path: string): Promise<void> {
         'div',
         { id: 'emptyState' },
         createEl('h1', {}, 'askmd'),
-        createEl('p', { class: 'empty-sub' }, 'ファイルを選んでください'),
+        createEl('p', { class: 'empty-sub' }, t('empty.selectFile')),
       );
       docContent.appendChild(emptyEl);
     }
     await refreshTree();
   } catch (e) {
-    showToast(`削除失敗: ${String(e)}`);
+    showToast(t('toast.deleteFail', String(e)));
   }
 }
 
 async function undoDelete(): Promise<void> {
   const last = deleteUndoStack.pop();
   if (!last) {
-    showToast('戻せる削除はありません');
+    showToast(t('toast.noUndo'));
     return;
   }
   try {
     await invoke('restore_file', { path: last.path, content: last.content });
-    showToast('復元しました');
+    showToast(t('toast.restored'));
     await refreshTree();
     // 復元したファイルを開いておく
     await openFile(last.path);
   } catch (e) {
     deleteUndoStack.push(last);
-    showToast(`復元失敗: ${String(e)}`);
+    showToast(t('toast.restoreFail', String(e)));
   }
 }
 
@@ -282,17 +312,17 @@ async function openFile(path: string, options?: OpenOptions): Promise<void> {
     return;
   }
   try {
-    const text = (await invoke('read_markdown', { path })) as string;
-    const fm = parseFrontmatter(text);
+    const result = (await invoke('read_markdown', { path })) as { content: string; modified: number | null };
+    const fm = parseFrontmatter(result.content);
     const filename = path.split('/').pop() || path;
     const title = extractTitle(fm.body, fm, filename);
     const rendered = render(fm.body);
-    const fmHtml = buildFmHeader(fm, title, path);
+    const fmHtml = buildFmHeader(fm, title, path, result.modified);
     cache.set(path, { rendered, title, fmHtml });
     renderDoc(path, title, rendered, fmHtml);
     if (options?.scrollQuery) scrollToQuery(options.scrollQuery);
   } catch (e) {
-    showToast(`読み込み失敗: ${String(e)}`);
+    showToast(t('toast.readFail', String(e)));
   }
 }
 
@@ -333,30 +363,114 @@ function scrollToQuery(query: string): void {
   }
 }
 
+function relativePath(absPath: string): string {
+  if (currentRoot && absPath.startsWith(currentRoot.path)) {
+    return absPath.slice(currentRoot.path.length).replace(/^\/+/, '');
+  }
+  return absPath;
+}
+
+function formatModified(epochSecs: number | null): string | null {
+  if (epochSecs == null) return null;
+  const d = new Date(epochSecs * 1000);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
 function buildFmHeader(
   fm: ReturnType<typeof parseFrontmatter>,
-  _title: string,
+  title: string,
   path: string,
+  modified: number | null,
 ): HTMLElement | null {
+  const container = createEl('div', { style: 'display:contents;' });
+
+  // タイトル行（frontmatter title or 最初の H1 or ファイル名）
+  container.appendChild(createEl('div', { class: 'doc-heading' }, title));
+
+  // 情報行: パス・メタ・アクション
+  const infoRow = createEl('div', { class: 'doc-info-row' });
+
+  const pathEl = createEl('span', {
+    class: 'doc-title',
+    title: t('header.clickToSelect'),
+    onClick: (ev) => {
+      const range = document.createRange();
+      range.selectNodeContents(ev.currentTarget as Node);
+      const sel = window.getSelection();
+      sel?.removeAllRanges();
+      sel?.addRange(range);
+    },
+  }, relativePath(path));
+  infoRow.appendChild(pathEl);
+
+  // メタ情報 (更新日・tags)
   const meta = createEl('div', { class: 'doc-meta' });
-  if (fm.date) meta.appendChild(createEl('span', { class: 'doc-meta-tag' }, fm.date));
+  const modStr = formatModified(modified);
+  if (modStr) meta.appendChild(createEl('span', { class: 'doc-meta-tag' }, modStr));
   if (fm.tags) {
     for (const tag of fm.tags) meta.appendChild(createEl('span', { class: 'doc-meta-tag' }, `#${tag}`));
   }
-  const translateBtn = createEl('button', {
-    class: 'translate-btn',
-    title: '翻訳 (⌘⇧T)',
+  if (meta.children.length > 0) {
+    infoRow.appendChild(createEl('span', { class: 'doc-sep' }, '·'));
+    infoRow.appendChild(meta);
+  }
+
+  // アクションボタン
+  const actions = createEl('div', { class: 'doc-actions' });
+  actions.appendChild(createEl('button', {
+    class: 'doc-action-btn',
+    title: t('header.finder'),
+    onClick: () => void invoke('reveal_in_finder', { path }),
+  }, 'Finder'));
+  actions.appendChild(createEl('button', {
+    class: 'doc-action-btn',
+    title: t('header.translate'),
+    dataset: { role: 'translate' },
     onClick: () => void translateCurrentDoc(),
-  }, '翻訳');
+  }, t('translate.btn')));
+  infoRow.appendChild(actions);
 
-  const pathRow = createEl('div', { class: 'doc-title', style: 'display: flex; align-items: center;' });
-  pathRow.appendChild(document.createTextNode(path));
-  pathRow.appendChild(translateBtn);
-
-  const container = createEl('div');
-  container.appendChild(pathRow);
-  if (meta.children.length > 0) container.appendChild(meta);
+  container.appendChild(infoRow);
   return container;
+}
+
+// 現在表示中の DOM をキャッシュに退避
+function saveDomSnapshot(): void {
+  const prevPath = docContent.dataset.path || '';
+  if (!prevPath) return;
+  const headerFrag = document.createDocumentFragment();
+  while (docHeader.firstChild) headerFrag.appendChild(docHeader.firstChild);
+  const bodyFrag = document.createDocumentFragment();
+  while (docContent.firstChild) bodyFrag.appendChild(docContent.firstChild);
+  const wrapper = createEl('div');
+  wrapper.appendChild(bodyFrag);
+  domCache.set(prevPath, {
+    header: headerFrag,
+    body: wrapper,
+    scrollTop: docContent.scrollTop,
+  });
+}
+
+// キャッシュから DOM を復元。成功したら true。
+function restoreDomSnapshot(path: string): boolean {
+  const snap = domCache.get(path);
+  if (!snap) return false;
+  domCache.delete(path);
+  clear(docHeader);
+  docHeader.appendChild(snap.header);
+  docHeader.classList.toggle('empty', docHeader.childElementCount === 0);
+  clear(docContent);
+  while (snap.body.firstChild) docContent.appendChild(snap.body.firstChild);
+  docContent.dataset.path = path;
+  docContent.scrollTop = snap.scrollTop;
+  // アウトラインを再設定
+  const mdBody = docContent.querySelector('.md-body') as HTMLElement | null;
+  if (mdBody) {
+    const outline = extractOutlineFromDom(mdBody);
+    tree.setOutline(path, outline);
+  }
+  return true;
 }
 
 function renderDoc(
@@ -365,6 +479,20 @@ function renderDoc(
   renderedHtml: string,
   header: HTMLElement | null,
 ): void {
+  // 現在の DOM を退避
+  saveDomSnapshot();
+
+  // キャッシュに DOM があればそちらを復元
+  if (restoreDomSnapshot(path)) {
+    // ヘッダーだけ再構築 (modified 等が変わる可能性)
+    if (header) {
+      clear(docHeader);
+      docHeader.appendChild(header);
+      docHeader.classList.remove('empty');
+    }
+    return;
+  }
+
   clear(docHeader);
   if (header) docHeader.appendChild(header);
   docHeader.classList.toggle('empty', !header);
@@ -372,7 +500,9 @@ function renderDoc(
   clear(docContent);
   const body = createEl('article', { class: 'md-body' });
   insertSanitizedHtml(body, renderedHtml);
+  wrapSections(body);
   docContent.appendChild(body);
+  docContent.dataset.path = path;
   docContent.scrollTop = 0;
 
   // 画像の相対パスを asset URL に解決
@@ -391,8 +521,10 @@ function renderDoc(
     const href = a.getAttribute('href') || '';
     if (!href) return;
     if (/^https?:/.test(href)) {
-      a.setAttribute('target', '_blank');
-      a.setAttribute('rel', 'noopener noreferrer');
+      a.addEventListener('click', (ev) => {
+        ev.preventDefault();
+        void invoke('open_url', { url: href });
+      });
       return;
     }
     if (href.startsWith('#')) return;
@@ -410,7 +542,7 @@ function renderDoc(
   const outline = extractOutlineFromDom(body);
   tree.setOutline(path, outline);
 
-  // Mermaid ダイアグラムを非同期レンダリング
+  processAdmonitions(body);
   void renderMermaidBlocks();
 }
 
@@ -419,7 +551,7 @@ async function loadRoot(path: string): Promise<void> {
   try {
     const node = (await invoke('scan_markdown_tree', { root: path })) as TreeNode | null;
     if (!node) {
-      showToast('そのディレクトリには .md が見つかりません');
+      showToast(t('toast.noMd'));
       return;
     }
     currentRoot = { path, tree: node };
@@ -434,7 +566,7 @@ async function loadRoot(path: string): Promise<void> {
       console.warn('start_watch failed:', e);
     }
   } catch (e) {
-    showToast(`スキャン失敗: ${String(e)}`);
+    showToast(t('toast.scanFail', String(e)));
   }
 }
 
@@ -444,8 +576,29 @@ async function pickAndLoad(): Promise<void> {
 }
 
 // ─── イベント配線 ───
-openBtn.addEventListener('click', pickAndLoad);
 document.getElementById('openBtnLarge')?.addEventListener('click', pickAndLoad);
+
+// ペインクリックでフォーカス状態を更新 (Finder 方式)
+leftPane.addEventListener('mousedown', () => document.body.classList.add('focus-tree'));
+docContent.addEventListener('mousedown', () => document.body.classList.remove('focus-tree'));
+
+function toggleSidebar(): void {
+  document.body.classList.toggle('sidebar-collapsed');
+  if (document.body.classList.contains('sidebar-collapsed')) {
+    docContent.focus();
+    document.body.classList.remove('focus-tree');
+  }
+}
+
+// ─── ツールバーボタン ───
+document.getElementById('tbSidebar')?.addEventListener('click', toggleSidebar);
+document.getElementById('tbSearch')?.addEventListener('click', () => {
+  if (currentRoot) search.open(currentRoot.path);
+  else showToast(t('toast.openDirFirst'));
+});
+document.getElementById('tbPalette')?.addEventListener('click', () => {
+  palette.open(tree.flatten());
+});
 
 // ─── フォルダ D&D (Tauri の OS ネイティブ drag-drop イベント) ───
 void listen('tauri://drag-enter', () => {
@@ -490,6 +643,11 @@ filterInput.addEventListener('keydown', (ev) => {
 document.addEventListener('keydown', (ev) => {
   const meta = ev.metaKey || ev.ctrlKey;
 
+  if (meta && ev.key.toLowerCase() === 'b') {
+    ev.preventDefault();
+    toggleSidebar();
+    return;
+  }
   if (meta && ev.key.toLowerCase() === 'o') {
     ev.preventDefault();
     void pickAndLoad();
@@ -508,7 +666,7 @@ document.addEventListener('keydown', (ev) => {
   if (meta && ev.key.toLowerCase() === 'f') {
     ev.preventDefault();
     if (!currentRoot) {
-      showToast('先にディレクトリを開いてください');
+      showToast(t('toast.openDirFirst'));
       return;
     }
     search.open(currentRoot.path);
@@ -517,7 +675,7 @@ document.addEventListener('keydown', (ev) => {
   if (meta && ev.key.toLowerCase() === 'l') {
     ev.preventDefault();
     if (!aiAvailable) {
-      showToast('AI プロバイダーが見つかりません (claude / gh / chatgpt)');
+      showToast(t('toast.noProvider'));
       return;
     }
     const selObj = window.getSelection();
@@ -539,7 +697,7 @@ document.addEventListener('keydown', (ev) => {
       // 選択なしでも既存パネルがあれば最後に触ったやつに focus (継続質問)
       ask.focusLast();
     } else {
-      showToast('質問するテキストを本文中で選択してください');
+      showToast(t('toast.selectText'));
     }
     return;
   }
@@ -580,7 +738,9 @@ document.addEventListener('keydown', (ev) => {
   if (ev.key === 'Tab') {
     ev.preventDefault();
     const onLeft = leftPane.contains(document.activeElement);
-    (onLeft ? docContent : treeContainer).focus();
+    const target = onLeft ? docContent : treeContainer;
+    target.focus();
+    document.body.classList.toggle('focus-tree', !onLeft);
     return;
   }
 
@@ -590,6 +750,7 @@ document.addEventListener('keydown', (ev) => {
     if (ev.key === 'ArrowLeft' || ev.key === 'h') {
       ev.preventDefault();
       treeContainer.focus();
+      document.body.classList.add('focus-tree');
       return;
     }
     const step = 40;
@@ -627,7 +788,7 @@ document.addEventListener('keydown', (ev) => {
   }
 
   // それ以外 (左ペイン側): 矢印/j/k で tree 移動、Enter で開く
-  // 矢印移動 = 即プレビュー (150ms デバウンス)。Enter は確定 open で即時
+  document.body.classList.add('focus-tree');
   if (ev.key === 'ArrowDown' || ev.key === 'j') {
     ev.preventDefault();
     tree.moveSelection(1);
@@ -638,30 +799,94 @@ document.addEventListener('keydown', (ev) => {
     schedulePreview();
   } else if (ev.key === 'ArrowRight' || ev.key === 'l') {
     ev.preventDefault();
-    if (tree.getNavMode() === 'file') {
-      // ファイル → outline mode に入る
+    const kind = tree.getSelectedKind();
+    if (kind === 'dir') {
+      tree.expandSelected();
+    } else if (tree.getNavMode() === 'file') {
       if (!tree.enterOutlineMode()) {
         const n = tree.getSelectedNode();
         if (n) void openFile(n.path).then(() => tree.enterOutlineMode());
       }
     } else if (tree.getNavMode() === 'outline') {
-      // outline → さらに → で右ペインにフォーカス移動
       docContent.focus();
+      document.body.classList.remove('focus-tree');
     }
   } else if (ev.key === 'ArrowLeft' || ev.key === 'h') {
     ev.preventDefault();
-    tree.exitOutlineMode();
+    const kind = tree.getSelectedKind();
+    if (kind === 'dir') {
+      tree.collapseSelected();
+    } else {
+      tree.exitOutlineMode();
+    }
   } else if (ev.key === 'Enter') {
     ev.preventDefault();
     tree.openSelected();
   }
 });
 
+// ─── 選択時フローティング Ask ボタン ───
+const selAskBtn = createEl('button', { id: 'selectionAskBtn' }, t('ask.btn'));
+selAskBtn.hidden = true;
+document.body.appendChild(selAskBtn);
+
+selAskBtn.addEventListener('mousedown', (ev) => {
+  ev.preventDefault(); // 選択が消えないようにする
+});
+selAskBtn.addEventListener('click', (ev) => {
+  ev.preventDefault();
+  selAskBtn.hidden = true;
+  // Cmd+L と同じロジックを発火
+  document.dispatchEvent(new KeyboardEvent('keydown', { key: 'l', metaKey: true }));
+});
+
+function updateSelectionAskBtn(): void {
+  const selObj = window.getSelection();
+  const sel = selObj?.toString().trim() || '';
+  if (!sel || !aiAvailable || !currentFile) {
+    selAskBtn.hidden = true;
+    return;
+  }
+  // 選択範囲が docContent 内かチェック
+  if (!selObj || selObj.rangeCount === 0) { selAskBtn.hidden = true; return; }
+  const range = selObj.getRangeAt(0);
+  if (!docContent.contains(range.startContainer)) { selAskBtn.hidden = true; return; }
+
+  const rect = range.getBoundingClientRect();
+  if (rect.width < 1) { selAskBtn.hidden = true; return; }
+
+  // 選択範囲の末尾下にボタンを配置
+  let top = rect.bottom + 6;
+  let left = rect.right - 40;
+  // 画面外に出ないよう調整
+  const btnW = 100;
+  const btnH = 28;
+  if (left + btnW > window.innerWidth - 8) left = window.innerWidth - btnW - 8;
+  if (left < 8) left = 8;
+  if (top + btnH > window.innerHeight - 8) top = rect.top - btnH - 6;
+
+  selAskBtn.style.top = `${top}px`;
+  selAskBtn.style.left = `${left}px`;
+  selAskBtn.hidden = false;
+}
+
+docContent.addEventListener('mouseup', () => {
+  // mouseup 直後は selection がまだ確定していないことがあるので少し待つ
+  requestAnimationFrame(updateSelectionAskBtn);
+});
+document.addEventListener('selectionchange', () => {
+  const sel = window.getSelection()?.toString().trim() || '';
+  if (!sel) selAskBtn.hidden = true;
+});
+
 // ─── ファイル変更監視 ───
 void listen('fs-changed', async (ev) => {
   const paths = ev.payload as string[];
+  for (const p of paths) {
+    cache.delete(p);
+    domCache.delete(p);
+  }
   if (currentFile && paths.includes(currentFile)) {
-    cache.delete(currentFile);
     await openFile(currentFile);
   }
   if (currentRoot) {
@@ -725,7 +950,7 @@ async function initProviderMenu(): Promise<void> {
         p.name,
       );
       if (!p.available) {
-        item.appendChild(createEl('span', { class: 'provider-unavail-hint' }, '未検出'));
+        item.appendChild(createEl('span', { class: 'provider-unavail-hint' }, t('provider.unavailable')));
       }
       item.addEventListener('click', () => void selectProvider(p.id, p.name));
       providerMenu.appendChild(item);
@@ -745,7 +970,7 @@ async function selectProvider(id: string, name: string): Promise<void> {
     providerMenu.querySelectorAll('.provider-item').forEach((el) => {
       el.classList.toggle('active', (el as HTMLElement).dataset['id'] === id);
     });
-    showToast(`${name} に切り替えました`);
+    showToast(t('toast.switched', name));
   } catch (e) {
     showToast(String(e));
   }
@@ -771,6 +996,8 @@ async function renderRecentDirs(): Promise<void> {
     const existing = emptyState.querySelector('.recent-list');
     if (existing) existing.remove();
 
+    const heading = createEl('div', { class: 'recent-heading' }, t('empty.recent'));
+    emptyState.appendChild(heading);
     const ul = createEl('ul', { class: 'recent-list' });
     for (const dir of recent) {
       const btn = createEl(
@@ -790,42 +1017,156 @@ async function renderRecentDirs(): Promise<void> {
   }
 }
 
-// ─── 翻訳 (Cmd+Shift+T) ───
+// ─── 翻訳 (Cmd+Shift+T): 原文をインライン置換、ホバーで原文表示 ───
+const translateTooltip = createEl('div', { id: 'translateTooltip' });
+translateTooltip.hidden = true;
+document.body.appendChild(translateTooltip);
+
+docContent.addEventListener('mouseover', (ev) => {
+  const target = (ev.target as HTMLElement).closest('[data-original-text]') as HTMLElement | null;
+  if (!target) return;
+  const original = target.getAttribute('data-original-text');
+  if (!original) return;
+  translateTooltip.textContent = original;
+  const rect = target.getBoundingClientRect();
+  let top = rect.bottom + 6;
+  let left = rect.left;
+  if (top + 180 > window.innerHeight) top = rect.top - translateTooltip.offsetHeight - 6;
+  if (left + 420 > window.innerWidth) left = window.innerWidth - 420 - 8;
+  if (left < 8) left = 8;
+  translateTooltip.style.top = `${top}px`;
+  translateTooltip.style.left = `${left}px`;
+  translateTooltip.hidden = false;
+});
+
+docContent.addEventListener('mouseout', (ev) => {
+  const related = (ev as MouseEvent).relatedTarget as Node | null;
+  if (related && (related as HTMLElement).closest?.('[data-original-text]')) return;
+  translateTooltip.hidden = true;
+});
+
 async function translateCurrentDoc(): Promise<void> {
   const body = docContent.querySelector('.md-body') as HTMLElement | null;
   if (!body) {
-    showToast('翻訳するドキュメントがありません');
+    showToast(t('translate.noDoc'));
     return;
   }
-  // テキストノードのみ抽出して翻訳に渡す
-  const textContent = body.textContent || '';
-  if (!textContent.trim()) return;
 
-  // 翻訳ボタンがあればローディング表示
-  const btn = docHeader.querySelector('.translate-btn') as HTMLElement | null;
-  if (btn) btn.classList.add('loading');
+  const btn = docHeader.querySelector('[data-role="translate"]') as HTMLElement | null;
+
+  // トグル: 翻訳済み → 原文に戻す
+  if (body.dataset.translated === 'true') {
+    body.querySelectorAll('[data-original-html]').forEach((el) => {
+      const htm = el as HTMLElement;
+      const saved = htm.getAttribute('data-original-html') || '';
+      clear(htm);
+      insertSanitizedHtml(htm, saved);
+      htm.removeAttribute('data-original-html');
+      htm.removeAttribute('data-original-text');
+    });
+    delete body.dataset.translated;
+    if (btn) btn.textContent = t('translate.btn');
+    showToast(t('translate.restored'));
+    return;
+  }
+
+  // 翻訳対象のブロック要素を収集
+  const blocks: HTMLElement[] = [];
+  body.querySelectorAll('p, h1, h2, h3, h4, h5, h6, li, th, td').forEach((el) => {
+    const htm = el as HTMLElement;
+    const text = htm.innerText?.trim();
+    // 子にさらにブロック要素を持つ li (ネストリスト) はスキップ
+    if (htm.tagName === 'LI' && htm.querySelector('ul, ol')) return;
+    if (text && text.length > 1) blocks.push(htm);
+  });
+  if (blocks.length === 0) {
+    showToast(t('translate.noText'));
+    return;
+  }
+
+  if (btn) { btn.classList.add('loading'); btn.textContent = t('translate.loading'); }
+
+  // 各ブロックを1行に潰して \n で結合。Translate API は改行を保持するので分割可能
+  const lines = blocks.map((b) => b.innerText.trim().replace(/\n+/g, ' '));
+  const joined = lines.join('\n');
 
   try {
-    const translated = (await invoke('translate_text', { text: textContent.slice(0, 5000) })) as string;
-    // 翻訳結果を md-body の下に挿入
-    let resultEl = docContent.querySelector('.translate-result') as HTMLElement | null;
-    if (!resultEl) {
-      resultEl = createEl('div', { class: 'translate-result' });
-      body.parentElement?.appendChild(resultEl);
+    const translated = (await invoke('translate_text', {
+      text: joined.slice(0, 8000),
+    })) as string;
+    const parts = translated.split('\n');
+
+    const count = Math.min(blocks.length, parts.length);
+    for (let i = 0; i < count; i++) {
+      const block = blocks[i];
+      const part = parts[i]?.trim();
+      if (!part) continue;
+      // DOMPurify 通過済みの元 HTML を保存 (復元用)
+      block.setAttribute('data-original-html', block.innerHTML);
+      block.setAttribute('data-original-text', block.innerText);
+      block.textContent = part;
     }
-    clear(resultEl);
-    resultEl.style.cssText = 'padding: 16px 24px; border-top: 1px solid var(--border); color: var(--text-secondary); font-size: 13px; white-space: pre-wrap;';
-    resultEl.appendChild(document.createTextNode(translated));
-    showToast('翻訳完了');
+
+    body.dataset.translated = 'true';
+    if (btn) btn.textContent = t('translate.restoreBtn');
+    showToast(t('translate.done'));
   } catch (e) {
-    showToast(`翻訳失敗: ${String(e)}`);
+    showToast(t('translate.fail', String(e)));
   } finally {
     if (btn) btn.classList.remove('loading');
   }
 }
 
+// ─── メニューイベント受信 ───
+void listen('menu-action', (ev) => {
+  const id = ev.payload as string;
+  switch (id) {
+    case 'open_dir': void pickAndLoad(); break;
+    case 'undo_delete': void undoDelete(); break;
+    case 'toggle_sidebar': toggleSidebar(); break;
+    case 'quick_switch': palette.open(tree.flatten()); break;
+    case 'search':
+      if (currentRoot) search.open(currentRoot.path);
+      else showToast(t('toast.openDirFirst'));
+      break;
+    case 'ask_ai':
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'l', metaKey: true }));
+      break;
+    case 'translate': void translateCurrentDoc(); break;
+    case 'reveal_finder':
+      if (currentFile) void invoke('reveal_in_finder', { path: currentFile });
+      break;
+  }
+});
+
 // ─── 起動 ───
+initLang();
 initTheme();
+
+// HTML 内の静的テキストを i18n 化
+filterInput.placeholder = t('filter.placeholder');
+(byId('searchInput') as HTMLInputElement).placeholder = t('search.placeholder');
+(byId('paletteInput') as HTMLInputElement).placeholder = t('palette.placeholder');
+const openBtnLarge = document.getElementById('openBtnLarge');
+if (openBtnLarge) openBtnLarge.textContent = t('empty.open');
+const emptyHint = document.querySelector('#emptyState .empty-hint');
+if (emptyHint) emptyHint.textContent = t('empty.hint');
+const dropText = document.querySelector('#dropOverlayInner p');
+if (dropText) dropText.textContent = t('drop.text');
+document.getElementById('tbSidebar')?.setAttribute('title', t('tb.sidebar'));
+document.getElementById('tbSearch')?.setAttribute('title', t('tb.search'));
+document.getElementById('tbPalette')?.setAttribute('title', t('tb.palette'));
+byId('providerBtn').title = t('provider.title');
+byId('themeBtn').title = t('theme.title');
+
+// 言語切替ボタン
+const langBtn = byId('langBtn');
+langBtn.textContent = getLang() === 'ja' ? 'EN' : 'JA';
+langBtn.title = getLang() === 'ja' ? 'Switch to English' : '日本語に切替';
+langBtn.addEventListener('click', () => {
+  toggleLang();
+  location.reload();
+});
 
 (async () => {
   try {
