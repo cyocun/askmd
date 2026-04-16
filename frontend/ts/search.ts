@@ -1,4 +1,5 @@
 import { byId, clear, createEl } from './dom.js';
+import { t } from './i18n.js';
 
 // Cmd+F 全文横断検索。root 配下の .md を横断して行単位でマッチを返す。
 // 結果を選ぶと onSelect(hit) が呼ばれ、呼び出し元でファイルを開いて該当箇所に scroll する。
@@ -77,18 +78,18 @@ export function createSearch(
     if (q.length < 2) {
       hits = [];
       activeIdx = 0;
-      status.textContent = '2 文字以上で検索します';
+      status.textContent = t('search.min');
       redraw();
       return;
     }
     const seq = ++reqSeq;
-    status.textContent = '検索中…';
+    status.textContent = t('search.searching');
     try {
       const r = await invokeSearch(currentRoot, q);
       if (seq !== reqSeq) return;
       hits = r;
       activeIdx = 0;
-      status.textContent = hits.length === 0 ? 'マッチなし' : `${hits.length} 件 (上限 200)`;
+      status.textContent = hits.length === 0 ? t('search.noMatch') : t('search.results', hits.length);
       redraw();
     } catch (e) {
       if (seq !== reqSeq) return;
