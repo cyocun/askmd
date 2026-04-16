@@ -24,36 +24,62 @@ pub struct FileChangeInfo {
     pub change_count: u32,
 }
 
-// ─── git リポジトリ判定キャッシュ ───
+// ─── git ヘルパー ───
 
-static GIT_REPO_CACHE: LazyLock<Mutex<HashMap<PathBuf, bool>>> =
-    LazyLock::new(|| Mutex::new(HashMap::new()));
-
-fn is_git_repo(root: &Path) -> bool {
-    if let Ok(cache) = GIT_REPO_CACHE.lock() {
-        if let Some(&cached) = cache.get(root) {
-            return cached;
+/// macOS GUI アプリでは PATH が制限されるため、フルパスも試す
+fn git_command() -> Command {
+    // まず PATH 上の git を試す
+    if let Ok(output) = Command::new("git").arg("--version").output() {
+        if output.status.success() {
+            return Command::new("git");
         }
     }
-    let result = Command::new("git")
-        .args(["rev-parse", "--is-inside-work-tree"])
+    // Xcode CLT / Homebrew の一般的なパスを試す
+    for path in ["/usr/bin/git", "/usr/local/bin/git", "/opt/homebrew/bin/git"] {
+        if Path::new(path).exists() {
+            return Command::new(path);
+        }
+    }
+    Command::new("git")
+}
+
+static GIT_REPO_CACHE: LazyLock<Mutex<HashMap<PathBuf, Option<PathBuf>>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
+
+/// git リポジトリのルートパスを返す。リポジトリ外なら None。
+fn git_toplevel(root: &Path) -> Option<PathBuf> {
+    if let Ok(cache) = GIT_REPO_CACHE.lock() {
+        if let Some(cached) = cache.get(root) {
+            return cached.clone();
+        }
+    }
+    let output = git_command()
+        .args(["rev-parse", "--show-toplevel"])
         .current_dir(root)
         .output()
-        .map(|o| o.status.success())
-        .unwrap_or(false);
+        .ok()?;
+    let result = if output.status.success() {
+        Some(PathBuf::from(String::from_utf8_lossy(&output.stdout).trim()))
+    } else {
+        None
+    };
     if let Ok(mut cache) = GIT_REPO_CACHE.lock() {
-        cache.insert(root.to_path_buf(), result);
+        cache.insert(root.to_path_buf(), result.clone());
     }
     result
 }
 
+fn is_git_repo(root: &Path) -> bool {
+    git_toplevel(root).is_some()
+}
+
 // ─── git diff (単一ファイル) ───
 
-fn git_diff_lines(path: &Path, root: &Path) -> Option<DiffInfo> {
-    let output = Command::new("git")
+fn git_diff_lines(path: &Path, git_root: &Path) -> Option<DiffInfo> {
+    let output = git_command()
         .args(["diff", "HEAD", "--unified=0", "--"])
         .arg(path)
-        .current_dir(root)
+        .current_dir(git_root)
         .output()
         .ok()?;
 
@@ -64,16 +90,15 @@ fn git_diff_lines(path: &Path, root: &Path) -> Option<DiffInfo> {
     let diff_text = String::from_utf8_lossy(&output.stdout);
     if diff_text.trim().is_empty() {
         // untracked ファイルかチェック
-        let untracked = Command::new("git")
+        let untracked = git_command()
             .args(["ls-files", "--others", "--exclude-standard", "--"])
             .arg(path)
-            .current_dir(root)
+            .current_dir(git_root)
             .output()
             .ok()?;
         if String::from_utf8_lossy(&untracked.stdout).trim().is_empty() {
             return None;
         }
-        // untracked: 行数だけカウント (全文読み込み不要)
         let file = fs::File::open(path).ok()?;
         let line_count = std::io::BufRead::lines(std::io::BufReader::new(file)).count() as u32;
         let added: Vec<u32> = (1..=line_count).collect();
@@ -84,10 +109,11 @@ fn git_diff_lines(path: &Path, root: &Path) -> Option<DiffInfo> {
         });
     }
 
-    Some(parse_unified_diff(&diff_text))
+    let info = parse_unified_diff(&diff_text);
+    if info.change_count == 0 { return None; }
+    Some(info)
 }
 
-/// unified diff の @@ ヘッダーをパースして DiffInfo を生成
 fn parse_unified_diff(diff_text: &str) -> DiffInfo {
     let mut added = Vec::new();
     let mut changed = Vec::new();
@@ -117,46 +143,41 @@ fn parse_unified_diff(diff_text: &str) -> DiffInfo {
 
 // ─── git diff (リポジトリ全体を一括取得) ───
 
-/// 全変更ファイルの change_count を一括取得 (subprocess 2 回で済む)
-fn git_all_changes(root: &Path) -> HashMap<PathBuf, u32> {
+fn git_all_changes(git_root: &Path) -> HashMap<PathBuf, u32> {
     let mut result = HashMap::new();
 
-    // tracked ファイルの diff
-    if let Ok(output) = Command::new("git")
-        .args(["diff", "HEAD", "--stat", "--stat-width=999", "--"])
-        .current_dir(root)
+    // --numstat: machine-parseable "added\tremoved\tpath" 形式
+    if let Ok(output) = git_command()
+        .args(["diff", "HEAD", "--numstat", "--"])
+        .current_dir(git_root)
         .output()
     {
         if output.status.success() {
-            let text = String::from_utf8_lossy(&output.stdout);
-            for line in text.lines() {
-                // " path/to/file.md | 5 +++--" 形式
-                let parts: Vec<&str> = line.splitn(2, '|').collect();
-                if parts.len() != 2 {
-                    continue;
-                }
-                let file = parts[0].trim();
-                if !file.ends_with(".md") && !file.ends_with(".markdown") {
-                    continue;
-                }
-                let count_str = parts[1].trim().split_whitespace().next().unwrap_or("0");
-                let count: u32 = count_str.parse().unwrap_or(0);
+            for line in String::from_utf8_lossy(&output.stdout).lines() {
+                let parts: Vec<&str> = line.split('\t').collect();
+                if parts.len() != 3 { continue; }
+                let file = parts[2];
+                let abs_path = git_root.join(file);
+                if !util::is_markdown(&abs_path) { continue; }
+                let added: u32 = parts[0].parse().unwrap_or(0);
+                let removed: u32 = parts[1].parse().unwrap_or(0);
+                let count = added + removed;
                 if count > 0 {
-                    result.insert(root.join(file), count);
+                    result.insert(abs_path, count);
                 }
             }
         }
     }
 
     // untracked .md ファイル
-    if let Ok(output) = Command::new("git")
+    if let Ok(output) = git_command()
         .args(["ls-files", "--others", "--exclude-standard"])
-        .current_dir(root)
+        .current_dir(git_root)
         .output()
     {
         if output.status.success() {
             for line in String::from_utf8_lossy(&output.stdout).lines() {
-                let path = root.join(line.trim());
+                let path = git_root.join(line.trim());
                 if util::is_markdown(&path) {
                     let count = fs::File::open(&path)
                         .map(|f| std::io::BufRead::lines(std::io::BufReader::new(f)).count() as u32)
@@ -252,8 +273,8 @@ pub async fn get_diff(path: String, root: String) -> Option<DiffInfo> {
     let file_path = PathBuf::from(&path);
     let root_path = PathBuf::from(&root);
     tauri::async_runtime::spawn_blocking(move || {
-        if is_git_repo(&root_path) {
-            git_diff_lines(&file_path, &root_path)
+        if let Some(git_root) = git_toplevel(&root_path) {
+            git_diff_lines(&file_path, &git_root)
         } else {
             snapshot_diff_lines(&file_path, &root_path)
         }
@@ -281,19 +302,23 @@ pub async fn mark_as_read(path: String, root: String) {
 pub async fn get_changed_files(root: String) -> Vec<FileChangeInfo> {
     let root_path = PathBuf::from(&root);
     tauri::async_runtime::spawn_blocking(move || {
-        let git = is_git_repo(&root_path);
         let mut results = Vec::new();
 
-        if git {
-            // バッチ: 2 回の git コマンドで全変更を取得
-            let changes = git_all_changes(&root_path);
+        if let Some(git_root) = git_toplevel(&root_path) {
+            let changes = git_all_changes(&git_root);
+            // root 配下のファイルのみ返す (サブディレクトリで開いた場合)
             for (path, count) in changes {
+                if !path.starts_with(&root_path) { continue; }
                 let name = path.file_name().unwrap_or_default().to_string_lossy().into_owned();
                 let title = super::directory::extract_title(&path);
-                results.push(FileChangeInfo { path: path.to_string_lossy().into_owned(), name, title, change_count: count });
+                results.push(FileChangeInfo {
+                    path: path.to_string_lossy().into_owned(),
+                    name,
+                    title,
+                    change_count: count,
+                });
             }
         } else {
-            // スナップショット: 全 .md を走査
             let mut md_files = Vec::new();
             util::collect_md_paths(&root_path, &mut md_files);
             for path in md_files {

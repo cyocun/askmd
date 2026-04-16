@@ -454,6 +454,36 @@ function buildFmHeader(
       else void enterEditMode();
     },
   }, t('edit.btn')));
+  // 差分バッジ (非同期で取得後に表示)
+  const diffBadge = createEl('button', {
+    class: 'doc-action-btn doc-diff-badge',
+    dataset: { role: 'diff' },
+  });
+  diffBadge.hidden = true;
+  actions.appendChild(diffBadge);
+  if (currentRoot) {
+    void (async () => {
+      try {
+        let diff: DiffInfo | null;
+        if (diffCache.has(path)) {
+          diff = diffCache.get(path)!;
+        } else {
+          diff = (await invoke('get_diff', { path, root: currentRoot!.path })) as DiffInfo | null;
+          diffCache.set(path, diff);
+        }
+        if (diff && diff.change_count > 0) {
+          diffBadge.textContent = t('diff.changed', diff.change_count);
+          diffBadge.title = t('diff.clickToMark');
+          diffBadge.hidden = false;
+          diffBadge.addEventListener('click', () => {
+            void invoke('mark_as_read', { path, root: currentRoot?.path || '' });
+            diffBadge.hidden = true;
+            diffCache.delete(path);
+          });
+        }
+      } catch { /* ignore */ }
+    })();
+  }
   infoRow.appendChild(actions);
 
   container.appendChild(infoRow);
@@ -568,44 +598,10 @@ function renderDoc(
   processAdmonitions(body);
   addCopyButtons(body);
   void renderMermaidBlocks();
-
-  // 差分ハイライト: レンダリング後に非同期で取得して適用
-  if (currentRoot) {
-    void applyDiffHighlight(path, currentRoot.path, body);
-  }
 }
 
 // ─── 差分ハイライト ───
 const diffCache = new Map<string, DiffInfo | null>();
-
-async function applyDiffHighlight(path: string, root: string, body: HTMLElement): Promise<void> {
-  try {
-    let diff: DiffInfo | null;
-    if (diffCache.has(path)) {
-      diff = diffCache.get(path)!;
-    } else {
-      diff = (await invoke('get_diff', { path, root })) as DiffInfo | null;
-      diffCache.set(path, diff);
-    }
-    if (!diff) return;
-    // markdown レンダリング後の DOM にはブロック要素が並ぶ。
-    // 元の markdown の行番号と DOM 要素は 1:1 対応しないため、
-    // ブロック要素に data-source-line を振る代わりに、
-    // 差分がある場合は md-body の先頭にインジケータバーを表示する。
-    const indicator = createEl('div', { class: 'diff-indicator' },
-      createEl('span', { class: 'diff-indicator-dot' }),
-      createEl('span', {}, t('diff.changed', diff.change_count)),
-    );
-    indicator.addEventListener('click', () => {
-      // 既読マーク (スナップショット更新)
-      void invoke('mark_as_read', { path, root });
-      indicator.remove();
-    });
-    body.insertBefore(indicator, body.firstChild);
-  } catch {
-    // diff 取得失敗は無視
-  }
-}
 
 async function loadChangeBadges(root: string): Promise<void> {
   try {
