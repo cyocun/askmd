@@ -26,6 +26,7 @@ fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_window_state::Builder::new().build())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(InitialPath(initial))
         .manage(WatcherState::new())
         .manage(ActiveProvider::new())
@@ -43,7 +44,31 @@ fn main() {
             commands::search::search_markdown,
             commands::watch::start_watch,
             commands::cli::get_initial_path,
+            commands::translate::translate_text,
+            commands::recent::get_recent_dirs,
+            commands::recent::add_recent_dir,
         ])
+        .setup(|app| {
+            let handle = app.handle().clone();
+            // 起動 5 秒後に初回チェック、以降 6 時間周期
+            tauri::async_runtime::spawn(async move {
+                tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+                loop {
+                    if let Ok(updater) = tauri_plugin_updater::UpdaterExt::updater(&handle) {
+                        if let Ok(Some(update)) = updater.check().await {
+                            let _: Result<(), _> = update
+                                .download_and_install(
+                                    |_chunk_len: usize, _content_len: Option<u64>| {},
+                                    || {},
+                                )
+                                .await;
+                        }
+                    }
+                    tokio::time::sleep(std::time::Duration::from_secs(6 * 60 * 60)).await;
+                }
+            });
+            Ok(())
+        })
         .run(tauri::generate_context!())
         .expect("error while running askmd");
 }

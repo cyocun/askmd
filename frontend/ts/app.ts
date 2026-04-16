@@ -24,6 +24,12 @@ interface AiProviderInfo {
   available: boolean;
 }
 
+// ─── 最近開いたディレクトリ型 ───
+interface RecentDir {
+  path: string;
+  name: string;
+}
+
 // ─── 状態 ───
 let currentRoot: { path: string; tree: TreeNode } | null = null;
 let currentFile: string | null = null;
@@ -169,14 +175,13 @@ async function deleteMd(path: string): Promise<void> {
       currentFile = null;
       clear(docHeader);
       clear(docContent);
-      docContent.appendChild(
-        createEl(
-          'div',
-          { id: 'emptyState' },
-          createEl('h1', {}, 'askmd'),
-          createEl('p', { class: 'empty-sub' }, 'ファイルを選んでください'),
-        ),
+      const emptyEl = createEl(
+        'div',
+        { id: 'emptyState' },
+        createEl('h1', {}, 'askmd'),
+        createEl('p', { class: 'empty-sub' }, 'ファイルを選んでください'),
       );
+      docContent.appendChild(emptyEl);
     }
     await refreshTree();
   } catch (e) {
@@ -338,9 +343,18 @@ function buildFmHeader(
   if (fm.tags) {
     for (const tag of fm.tags) meta.appendChild(createEl('span', { class: 'doc-meta-tag' }, `#${tag}`));
   }
-  const pathEl = createEl('div', { class: 'doc-title' }, path);
+  const translateBtn = createEl('button', {
+    class: 'translate-btn',
+    title: '翻訳 (⌘⇧T)',
+    onClick: () => void translateCurrentDoc(),
+  }, '翻訳');
+
+  const pathRow = createEl('div', { class: 'doc-title', style: 'display: flex; align-items: center;' });
+  pathRow.appendChild(document.createTextNode(path));
+  pathRow.appendChild(translateBtn);
+
   const container = createEl('div');
-  container.appendChild(pathEl);
+  container.appendChild(pathRow);
   if (meta.children.length > 0) container.appendChild(meta);
   return container;
 }
@@ -412,6 +426,8 @@ async function loadRoot(path: string): Promise<void> {
     rootLabel.textContent = node.name;
     rootLabel.title = path;
     tree.render(node, path);
+    // 最近開いたディレクトリに追加
+    void invoke('add_recent_dir', { path });
     try {
       await invoke('start_watch', { path });
     } catch (e) {
@@ -482,6 +498,11 @@ document.addEventListener('keydown', (ev) => {
   if (meta && ev.key.toLowerCase() === 'p') {
     ev.preventDefault();
     palette.open(tree.flatten());
+    return;
+  }
+  if (meta && ev.shiftKey && ev.key.toLowerCase() === 't') {
+    ev.preventDefault();
+    void translateCurrentDoc();
     return;
   }
   if (meta && ev.key.toLowerCase() === 'f') {
@@ -740,6 +761,69 @@ document.addEventListener('click', () => {
   providerMenu.hidden = true;
 });
 
+// ─── 最近開いたディレクトリを emptyState に表示 ───
+async function renderRecentDirs(): Promise<void> {
+  const emptyState = document.getElementById('emptyState');
+  if (!emptyState) return;
+  try {
+    const recent = (await invoke('get_recent_dirs')) as RecentDir[];
+    if (recent.length === 0) return;
+    const existing = emptyState.querySelector('.recent-list');
+    if (existing) existing.remove();
+
+    const ul = createEl('ul', { class: 'recent-list' });
+    for (const dir of recent) {
+      const btn = createEl(
+        'button',
+        {
+          class: 'recent-item',
+          onClick: () => void loadRoot(dir.path),
+        },
+        createEl('span', { class: 'recent-item-name' }, dir.name),
+        createEl('span', { class: 'recent-item-path' }, dir.path),
+      );
+      ul.appendChild(createEl('li', {}, btn));
+    }
+    emptyState.appendChild(ul);
+  } catch (e) {
+    console.warn('recent dirs load failed:', e);
+  }
+}
+
+// ─── 翻訳 (Cmd+Shift+T) ───
+async function translateCurrentDoc(): Promise<void> {
+  const body = docContent.querySelector('.md-body') as HTMLElement | null;
+  if (!body) {
+    showToast('翻訳するドキュメントがありません');
+    return;
+  }
+  // テキストノードのみ抽出して翻訳に渡す
+  const textContent = body.textContent || '';
+  if (!textContent.trim()) return;
+
+  // 翻訳ボタンがあればローディング表示
+  const btn = docHeader.querySelector('.translate-btn') as HTMLElement | null;
+  if (btn) btn.classList.add('loading');
+
+  try {
+    const translated = (await invoke('translate_text', { text: textContent.slice(0, 5000) })) as string;
+    // 翻訳結果を md-body の下に挿入
+    let resultEl = docContent.querySelector('.translate-result') as HTMLElement | null;
+    if (!resultEl) {
+      resultEl = createEl('div', { class: 'translate-result' });
+      body.parentElement?.appendChild(resultEl);
+    }
+    clear(resultEl);
+    resultEl.style.cssText = 'padding: 16px 24px; border-top: 1px solid var(--border); color: var(--text-secondary); font-size: 13px; white-space: pre-wrap;';
+    resultEl.appendChild(document.createTextNode(translated));
+    showToast('翻訳完了');
+  } catch (e) {
+    showToast(`翻訳失敗: ${String(e)}`);
+  } finally {
+    if (btn) btn.classList.remove('loading');
+  }
+}
+
 // ─── 起動 ───
 initTheme();
 
@@ -747,7 +831,11 @@ initTheme();
   try {
     await initProviderMenu();
     const initial = (await invoke('get_initial_path')) as string | null;
-    if (initial) await loadRoot(initial);
+    if (initial) {
+      await loadRoot(initial);
+    } else {
+      await renderRecentDirs();
+    }
   } catch (e) {
     console.error('init failed:', e);
   }
