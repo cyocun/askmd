@@ -28,6 +28,7 @@ export interface AskDeps {
     sessionId: string | null;
   }) => Promise<void>;
   subscribe: (handler: (ev: AskStreamEvent) => void) => () => void;
+  getProviderName: () => string;
 }
 
 export interface AskOpenOptions {
@@ -210,10 +211,12 @@ function buildPanel(
     '×',
   );
 
+  const providerLabel = createEl('span', {}, `${deps.getProviderName()} に質問`);
+
   const header = createEl(
     'div',
     { class: 'ask-header' },
-    createEl('span', {}, 'Claude に質問'),
+    providerLabel,
     badge,
     createEl('span', { class: 'ask-spacer' }),
     closeBtn,

@@ -2,6 +2,7 @@
 
 mod commands;
 
+use commands::ai::ActiveProvider;
 use commands::cli::InitialPath;
 use commands::watch::WatcherState;
 
@@ -27,6 +28,7 @@ fn main() {
         .plugin(tauri_plugin_dialog::init())
         .manage(InitialPath(initial))
         .manage(WatcherState::new())
+        .manage(ActiveProvider::new())
         .invoke_handler(tauri::generate_handler![
             commands::directory::pick_directory,
             commands::directory::scan_markdown_tree,
@@ -34,6 +36,10 @@ fn main() {
             commands::directory::restore_file,
             commands::markdown::read_markdown,
             commands::claude::ask_claude_stream,
+            commands::ai::ask_ai_stream,
+            commands::ai::get_ai_providers,
+            commands::ai::get_active_provider,
+            commands::ai::set_active_provider,
             commands::search::search_markdown,
             commands::watch::start_watch,
             commands::cli::get_initial_path,

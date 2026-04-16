@@ -16,10 +16,18 @@ const invoke = TAURI.core.invoke as (cmd: string, args?: Record<string, unknown>
 const convertFileSrc = TAURI.core.convertFileSrc as (path: string, protocol?: string) => string;
 const listen = TAURI.event.listen as (event: string, handler: (ev: { payload: unknown }) => void) => Promise<() => void>;
 
+// ─── AI プロバイダー型 ───
+interface AiProviderInfo {
+  id: string;
+  name: string;
+  available: boolean;
+}
+
 // ─── 状態 ───
 let currentRoot: { path: string; tree: TreeNode } | null = null;
 let currentFile: string | null = null;
 const cache = new Map<string, { rendered: string; title: string; fmHtml: HTMLElement | null }>();
+let activeProviderName = 'Claude';
 
 const leftPane = byId('leftPane');
 const treeContainer = byId('treeContainer');
@@ -30,6 +38,8 @@ const openBtn = byId('openBtn') as HTMLButtonElement;
 const filterInput = byId('filterInput') as HTMLInputElement;
 const toast = byId('toast');
 const dropOverlay = byId('dropOverlay');
+const providerBtn = byId('providerBtn') as HTMLButtonElement;
+const providerMenu = byId('providerMenu');
 
 // 選択の始点を含む "最も内側の" md ブロックを anchor として返す。
 // 狙い: リストの途中で質問したら UL 全体の後ではなくその LI の直下に挿入したい。
@@ -110,7 +120,7 @@ void listen('ask-stream', (ev) => {
 
 const ask = createAsk({
   startStream: async (args) => {
-    await invoke('ask_claude_stream', args);
+    await invoke('ask_ai_stream', args);
   },
   subscribe: (h) => {
     askSubscribers.add(h);
@@ -118,6 +128,7 @@ const ask = createAsk({
       askSubscribers.delete(h);
     };
   },
+  getProviderName: () => activeProviderName,
 });
 
 // ─── ツリー ───
@@ -633,9 +644,76 @@ void listen('fs-changed', async (ev) => {
   }
 });
 
+// ─── AI プロバイダー切替メニュー ───
+
+function updateProviderBtnLabel(name: string): void {
+  clear(providerBtn);
+  providerBtn.appendChild(document.createTextNode(`${name} `));
+  providerBtn.appendChild(createEl('span', { class: 'provider-caret' }, '▾'));
+}
+
+async function initProviderMenu(): Promise<void> {
+  try {
+    const providers = (await invoke('get_ai_providers')) as AiProviderInfo[];
+    const activeId = (await invoke('get_active_provider')) as string;
+    const active = providers.find((p) => p.id === activeId);
+    if (active) {
+      activeProviderName = active.name;
+      updateProviderBtnLabel(active.name);
+    }
+
+    // メニュー項目を構築
+    clear(providerMenu);
+    for (const p of providers) {
+      const item = createEl(
+        'button',
+        {
+          class: `provider-item${p.id === activeId ? ' active' : ''}${!p.available ? ' unavailable' : ''}`,
+          dataset: { id: p.id },
+        },
+        p.name,
+      );
+      if (!p.available) {
+        item.appendChild(createEl('span', { class: 'provider-unavail-hint' }, '未検出'));
+      }
+      item.addEventListener('click', () => void selectProvider(p.id, p.name));
+      providerMenu.appendChild(item);
+    }
+  } catch (e) {
+    console.warn('provider init failed:', e);
+  }
+}
+
+async function selectProvider(id: string, name: string): Promise<void> {
+  try {
+    await invoke('set_active_provider', { provider: id });
+    activeProviderName = name;
+    updateProviderBtnLabel(name);
+    providerMenu.hidden = true;
+    // active クラス更新
+    providerMenu.querySelectorAll('.provider-item').forEach((el) => {
+      el.classList.toggle('active', (el as HTMLElement).dataset['id'] === id);
+    });
+    showToast(`${name} に切り替えました`);
+  } catch (e) {
+    showToast(String(e));
+  }
+}
+
+providerBtn.addEventListener('click', (ev) => {
+  ev.stopPropagation();
+  providerMenu.hidden = !providerMenu.hidden;
+});
+
+// メニュー外クリックで閉じる
+document.addEventListener('click', () => {
+  providerMenu.hidden = true;
+});
+
 // ─── 起動 ───
 (async () => {
   try {
+    await initProviderMenu();
     const initial = (await invoke('get_initial_path')) as string | null;
     if (initial) await loadRoot(initial);
   } catch (e) {

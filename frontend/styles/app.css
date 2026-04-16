@@ -72,9 +72,82 @@ body {
   -webkit-app-region: drag;
   background: var(--bg-surface);
   border-bottom: 1px solid var(--border-subtle);
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding-right: 12px;
 }
 /* ボタン・入力は drag 対象から除外 (通常クリックを可能にする) */
 button, input, textarea, select, a { -webkit-app-region: no-drag; }
+
+/* ─── プロバイダーセレクター ─── */
+#providerSelector {
+  position: relative;
+}
+#providerBtn {
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  color: var(--text-secondary);
+  font-size: 11px;
+  padding: 2px 8px;
+  cursor: pointer;
+  line-height: 1;
+  transition: background 0.12s, border-color 0.12s;
+}
+#providerBtn:hover {
+  background: var(--bg-hover);
+  border-color: var(--border);
+}
+.provider-caret {
+  font-size: 9px;
+  opacity: 0.6;
+}
+#providerMenu {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  margin-top: 4px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.28);
+  padding: 4px;
+  z-index: 200;
+  min-width: 140px;
+}
+.provider-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  background: none;
+  border: none;
+  border-radius: 4px;
+  color: var(--text);
+  font-size: 12px;
+  padding: 5px 10px;
+  cursor: pointer;
+  text-align: left;
+}
+.provider-item:hover {
+  background: var(--bg-hover);
+}
+.provider-item.active {
+  color: var(--accent);
+  font-weight: 600;
+}
+.provider-item.unavailable {
+  opacity: 0.45;
+}
+.provider-unavail-hint {
+  font-size: 10px;
+  color: var(--text-faint);
+  margin-left: auto;
+}
+@media (prefers-color-scheme: light) {
+  #providerMenu { box-shadow: 0 6px 20px rgba(0, 0, 0, 0.12); }
+}
 
 kbd {
   font-family: -apple-system, BlinkMacSystemFont, system-ui, sans-serif;

@@ -24,7 +24,12 @@
 </head>
 <body>
   <!-- タイトルバー (macOS traffic light の領域、全幅ドラッグ可能) -->
-  <div id="titleBar"></div>
+  <div id="titleBar">
+    <div id="providerSelector">
+      <button id="providerBtn" title="AI プロバイダー切替">Claude <span class="provider-caret">▾</span></button>
+      <div id="providerMenu" hidden></div>
+    </div>
+  </div>
 
   <!-- 左ペイン: ツリー -->
   <aside id="leftPane">
