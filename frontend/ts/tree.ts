@@ -1,6 +1,6 @@
-import { clear, createEl } from './dom.js';
-import { iconFile, iconFolder, iconFolderOpen, iconOutline, iconTrash } from './icons.js';
-import type { OutlineItem, TreeNode } from './types.js';
+import { clear, createEl } from './dom';
+import { iconFile, iconFolder, iconFolderOpen, iconOutline, iconTrash } from './icons';
+import type { OutlineItem, TreeNode } from './types';
 
 // ナビゲーション可能な「行」の抽象: ファイル / ディレクトリ / アウトライン見出し
 type RowKind = 'file' | 'dir' | 'outline';

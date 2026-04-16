@@ -45,6 +45,9 @@ const translations: Record<string, Record<Lang, string>> = {
   'toast.openDirFirst': { ja: '先にディレクトリを開いてください', en: 'Open a directory first' },
   'toast.noProvider': { ja: 'AI プロバイダーが見つかりません', en: 'No AI provider found' },
   'toast.selectText': { ja: '質問するテキストを本文中で選択してください', en: 'Select text in the document to ask' },
+  'toast.openFile': { ja: '先にファイルを開いてください', en: 'Open a file first' },
+  'toast.saved': { ja: '保存しました', en: 'Saved' },
+  'toast.saveFail': { ja: '保存失敗: {0}', en: 'Save failed: {0}' },
   'toast.switched': { ja: '{0} に切り替えました', en: 'Switched to {0}' },
   // ─ Provider ─
   'provider.title': { ja: 'AI プロバイダー切替', en: 'Switch AI Provider' },

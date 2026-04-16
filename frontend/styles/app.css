@@ -633,6 +633,22 @@ body.focus-tree .tree-node.selected .tree-outline-indicator {
   line-height: 1.7;
   position: relative;
 }
+/* 編集モード: padding を消して CodeMirror をフル幅に */
+#docContent[data-editing] {
+  padding: 0;
+  overflow: hidden;
+}
+.editor-container {
+  height: 100%;
+  overflow: hidden;
+}
+.editor-container .cm-editor {
+  height: 100%;
+}
+.editor-container .cm-scroller {
+  overflow: auto;
+  padding: 0 16px;
+}
 
 #emptyState {
   max-width: 520px;
@@ -817,6 +833,7 @@ body.focus-tree .tree-node.selected .tree-outline-indicator {
   font-size: 0.9em;
 }
 .md-body pre {
+  position: relative;
   background: var(--bg-code);
   padding: 12px 14px;
   border-radius: 6px;
@@ -824,6 +841,25 @@ body.focus-tree .tree-node.selected .tree-outline-indicator {
   margin: 0.8em 0;
   border: 1px solid var(--border-subtle);
 }
+.code-copy-btn {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  padding: 2px 8px;
+  font-size: 11px;
+  font-family: inherit;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg-surface);
+  color: var(--text-faint);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s;
+  z-index: 2;
+}
+.md-body pre:hover .code-copy-btn { opacity: 1; }
+.code-copy-btn:hover { background: var(--bg-hover); color: var(--text); }
+.code-copy-btn.copied { color: #3fb950; border-color: #3fb950; }
 .md-body pre code {
   background: transparent;
   padding: 0;

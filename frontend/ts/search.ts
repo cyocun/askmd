@@ -1,5 +1,5 @@
-import { byId, clear, createEl } from './dom.js';
-import { t } from './i18n.js';
+import { byId, clear, createEl } from './dom';
+import { t } from './i18n';
 
 // Cmd+F 全文横断検索。root 配下の .md を横断して行単位でマッチを返す。
 // 結果を選ぶと onSelect(hit) が呼ばれ、呼び出し元でファイルを開いて該当箇所に scroll する。

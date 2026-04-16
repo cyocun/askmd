@@ -1,22 +1,19 @@
-import { byId, clear, createEl } from './dom.js';
-import { createAsk } from './ask.js';
-import type { AskStreamEvent } from './ask.js';
-import { createPalette } from './palette.js';
-import { createSearch } from './search.js';
-import type { SearchHit } from './search.js';
-import { createTreeView } from './tree.js';
-import { extractTitle, parseFrontmatter, processAdmonitions, render, renderMermaidBlocks } from './renderer.js';
-import { initTheme } from './theme.js';
-import { initLang, getLang, toggleLang, t } from './i18n.js';
-import type { OutlineItem, TreeNode } from './types.js';
-
-const TAURI = (window as any).__TAURI__;
-if (!TAURI) {
-  console.error('Tauri bridge not available');
-}
-const invoke = TAURI.core.invoke as (cmd: string, args?: Record<string, unknown>) => Promise<any>;
-const convertFileSrc = TAURI.core.convertFileSrc as (path: string, protocol?: string) => string;
-const listen = TAURI.event.listen as (event: string, handler: (ev: { payload: unknown }) => void) => Promise<() => void>;
+import { byId, clear, createEl } from './dom';
+import { createAsk } from './ask';
+import type { AskStreamEvent } from './ask';
+import { createPalette } from './palette';
+import { createSearch } from './search';
+import type { SearchHit } from './search';
+import { createTreeView } from './tree';
+import { addCopyButtons, extractTitle, parseFrontmatter, processAdmonitions, render, renderMermaidBlocks } from './renderer';
+import { currentTheme, initTheme } from './theme';
+import { initLang, getLang, toggleLang, t } from './i18n';
+import type { OutlineItem, TreeNode } from './types';
+import { createEditor } from './editor';
+import type { EditorHandle } from './editor';
+import { invoke, convertFileSrc } from '@tauri-apps/api/core';
+import { listen } from '@tauri-apps/api/event';
+import '../styles/app.css';
 
 // ─── AI プロバイダー型 ───
 interface AiProviderInfo {
@@ -31,10 +28,27 @@ interface RecentDir {
   name: string;
 }
 
+// ─── スクロール位置永続化 ───
+function scrollKey(filePath: string): string {
+  const rel = currentRoot && filePath.startsWith(currentRoot.path)
+    ? filePath.slice(currentRoot.path.length)
+    : filePath;
+  return `askmd-scroll:${rel}`;
+}
+function saveScrollPos(filePath: string, top: number): void {
+  try { localStorage.setItem(scrollKey(filePath), String(Math.round(top))); } catch {}
+}
+function loadScrollPos(filePath: string): number | null {
+  try {
+    const v = localStorage.getItem(scrollKey(filePath));
+    return v != null ? parseInt(v, 10) : null;
+  } catch { return null; }
+}
+
 // ─── 状態 ───
 let currentRoot: { path: string; tree: TreeNode } | null = null;
 let currentFile: string | null = null;
-const cache = new Map<string, { rendered: string; title: string; fmHtml: HTMLElement | null }>();
+const cache = new Map<string, { rendered: string; title: string; fmHtml: HTMLElement | null; rawBody: string }>();
 // レンダリング済み DOM をファイルパスごとに保持 (スクロール位置・Ask パネル含む)
 interface DomSnapshot {
   header: DocumentFragment;
@@ -44,6 +58,7 @@ interface DomSnapshot {
 const domCache = new Map<string, DomSnapshot>();
 let activeProviderName = 'Claude';
 let aiAvailable = false; // どれか1つでも AI プロバイダーが利用可能か
+let activeEditor: EditorHandle | null = null; // Cmd+E 編集モード
 
 const leftPane = byId('leftPane');
 const treeContainer = byId('treeContainer');
@@ -167,6 +182,7 @@ const ask = createAsk({
   },
   getProviderName: () => activeProviderName,
   renderMarkdown: (md) => render(md),
+  postProcessContent: (container) => addCopyButtons(container),
 });
 
 // ─── ツリー ───
@@ -318,7 +334,7 @@ async function openFile(path: string, options?: OpenOptions): Promise<void> {
     const title = extractTitle(fm.body, fm, filename);
     const rendered = render(fm.body);
     const fmHtml = buildFmHeader(fm, title, path, result.modified);
-    cache.set(path, { rendered, title, fmHtml });
+    cache.set(path, { rendered, title, fmHtml, rawBody: fm.body });
     renderDoc(path, title, rendered, fmHtml);
     if (options?.scrollQuery) scrollToQuery(options.scrollQuery);
   } catch (e) {
@@ -439,6 +455,7 @@ function buildFmHeader(
 function saveDomSnapshot(): void {
   const prevPath = docContent.dataset.path || '';
   if (!prevPath) return;
+  saveScrollPos(prevPath, docContent.scrollTop);
   const headerFrag = document.createDocumentFragment();
   while (docHeader.firstChild) headerFrag.appendChild(docHeader.firstChild);
   const bodyFrag = document.createDocumentFragment();
@@ -504,6 +521,11 @@ function renderDoc(
   docContent.appendChild(body);
   docContent.dataset.path = path;
   docContent.scrollTop = 0;
+  // 保存済みスクロール位置の復元 (DOM レイアウト確定後)
+  const savedScroll = loadScrollPos(path);
+  if (savedScroll != null && savedScroll > 0) {
+    requestAnimationFrame(() => { docContent.scrollTop = savedScroll; });
+  }
 
   // 画像の相対パスを asset URL に解決
   const dir = path.substring(0, path.lastIndexOf('/'));
@@ -535,6 +557,7 @@ function renderDoc(
   tree.setOutline(path, outline);
 
   processAdmonitions(body);
+  addCopyButtons(body);
   void renderMermaidBlocks();
 }
 
@@ -565,6 +588,62 @@ async function loadRoot(path: string): Promise<void> {
 async function pickAndLoad(): Promise<void> {
   const picked = (await invoke('pick_directory')) as string | null;
   if (picked) await loadRoot(picked);
+}
+
+// ─── 簡易編集 (Cmd+E) ───
+async function enterEditMode(): Promise<void> {
+  if (!currentFile || activeEditor) return;
+  const path = currentFile;
+  try {
+    const result = (await invoke('read_markdown', { path })) as { content: string; modified: number | null };
+    // 現在の読みモードの DOM を退避
+    saveDomSnapshot();
+    clear(docContent);
+    docContent.dataset.editing = 'true';
+
+    const editorContainer = createEl('div', { class: 'editor-container' });
+    docContent.appendChild(editorContainer);
+
+    const isDark = currentTheme().includes('dark');
+    activeEditor = createEditor(editorContainer, {
+      content: result.content,
+      isDark,
+      onSave: async (content) => {
+        try {
+          await invoke('restore_file', { path, content });
+          // fs-changed イベントが発火し、自動で読みモードに戻る
+          exitEditMode();
+          showToast(t('toast.saved'));
+        } catch (e) {
+          showToast(t('toast.saveFail', String(e)));
+        }
+      },
+      onCancel: () => {
+        exitEditMode();
+      },
+    });
+    activeEditor.focus();
+  } catch (e) {
+    showToast(t('toast.readFail', String(e)));
+  }
+}
+
+function exitEditMode(): void {
+  if (!activeEditor) return;
+  activeEditor.destroy();
+  activeEditor = null;
+  delete docContent.dataset.editing;
+  // キャッシュから復元して読みモードに戻す
+  if (currentFile) {
+    const snap = domCache.get(currentFile);
+    if (snap) {
+      restoreDomSnapshot(currentFile);
+    } else {
+      // キャッシュになければ再読み込み
+      cache.delete(currentFile);
+      void openFile(currentFile);
+    }
+  }
 }
 
 // ─── イベント配線 ───
@@ -640,6 +719,17 @@ document.addEventListener('keydown', (ev) => {
     toggleSidebar();
     return;
   }
+  if (meta && ev.key.toLowerCase() === 'e') {
+    ev.preventDefault();
+    if (activeEditor) {
+      exitEditMode();
+    } else {
+      void enterEditMode();
+    }
+    return;
+  }
+  // 編集モード中は他のグローバルショートカットを無効化 (Cmd+S, Escape は editor.ts 内で処理)
+  if (activeEditor) return;
   if (meta && ev.key.toLowerCase() === 'o') {
     ev.preventDefault();
     void pickAndLoad();
@@ -673,10 +763,12 @@ document.addEventListener('keydown', (ev) => {
     const selObj = window.getSelection();
     const sel = selObj?.toString() || '';
     const filename = currentFile?.split('/').pop() || '';
+    const cached = currentFile ? cache.get(currentFile) : undefined;
     const ctx = {
       title: filename.replace(/\.md$/i, ''),
       path: currentFile || '',
       root: currentRoot?.path || '',
+      fileContent: cached?.rawBody,
     };
     if (sel.trim() && selObj && selObj.rangeCount > 0) {
       const range = selObj.getRangeAt(0);
@@ -688,8 +780,11 @@ document.addEventListener('keydown', (ev) => {
     } else if (ask.hasAny()) {
       // 選択なしでも既存パネルがあれば最後に触ったやつに focus (継続質問)
       ask.focusLast();
+    } else if (currentFile) {
+      // 選択なし・パネルなし: ファイル全体について質問
+      ask.open('', ctx, null);
     } else {
-      showToast(t('toast.selectText'));
+      showToast(t('toast.openFile'));
     }
     return;
   }
@@ -1141,7 +1236,16 @@ void listen('menu-action', (ev) => {
     case 'reveal_finder':
       if (currentFile) void invoke('reveal_in_finder', { path: currentFile });
       break;
+    case 'edit_toggle':
+      if (activeEditor) exitEditMode();
+      else void enterEditMode();
+      break;
   }
+});
+
+// ─── アプリ終了時にスクロール位置を保存 ───
+window.addEventListener('beforeunload', () => {
+  if (currentFile) saveScrollPos(currentFile, docContent.scrollTop);
 });
 
 // ─── 起動 ───

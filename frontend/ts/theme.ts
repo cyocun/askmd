@@ -1,5 +1,5 @@
-import { byId, createEl, clear } from './dom.js';
-import { reinitMermaidTheme } from './renderer.js';
+import { byId, createEl, clear } from './dom';
+import { reinitMermaidTheme } from './renderer';
 
 export type ThemeId = 'github-light' | 'github-dark' | 'solarized-light' | 'solarized-dark';
 

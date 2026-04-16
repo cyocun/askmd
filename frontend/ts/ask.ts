@@ -1,5 +1,5 @@
-import { createEl } from './dom.js';
-import { t } from './i18n.js';
+import { createEl } from './dom';
+import { t } from './i18n';
 
 // 複数の Ask パネルを管理する Manager。
 // - open() のたびに新しいパネルを DOM に挿入 (排他しない)
@@ -9,6 +9,7 @@ export interface AskContext {
   title: string;
   path: string;
   root: string;
+  fileContent?: string;
 }
 
 export interface AskStreamEvent {
@@ -31,6 +32,7 @@ export interface AskDeps {
   subscribe: (handler: (ev: AskStreamEvent) => void) => () => void;
   getProviderName: () => string;
   renderMarkdown: (md: string) => string;
+  postProcessContent?: (container: HTMLElement) => void;
 }
 
 export interface AskOpenOptions {
@@ -215,6 +217,7 @@ function createTurn(log: HTMLElement, question: string, deps: AskDeps, root: str
         }
       }
       renderMd();
+      if (deps.postProcessContent) deps.postProcessContent(aFlow);
     },
   };
 }
@@ -409,7 +412,9 @@ function buildPanel(
   return handle;
 }
 
-// 初回は引用 + 周辺参照の指示を付与。resume 継続時は Claude 側が文脈を覚えているので質問のみ。
+// 初回は引用 + ファイル全文 + 周辺参照の指示を付与。resume 継続時は Claude 側が文脈を覚えているので質問のみ。
+const FILE_CONTENT_LIMIT = 8000;
+
 function buildPrompt(
   selection: string,
   ctx: AskContext,
@@ -423,19 +428,37 @@ function buildPrompt(
     : ctx.path;
 
   const parts: string[] = [];
+
   if (selection) {
     parts.push(`以下は "${ctx.title}" (${relPath}) の抜粋です。`);
-    parts.push('必要に応じて Read / Glob / Grep で周辺ファイル (同ディレクトリの他 .md、参照先など) も読んで答えてください。');
+  } else {
+    parts.push(`対象ドキュメント: "${ctx.title}" (${relPath})`);
+  }
+  parts.push('必要に応じて Read / Glob / Grep で周辺ファイル (同ディレクトリの他 .md、参照先など) も読んで答えてください。');
+  parts.push('');
+
+  // ファイル全体をコンテキストとして含める
+  if (ctx.fileContent) {
+    if (ctx.fileContent.length <= FILE_CONTENT_LIMIT) {
+      parts.push('--- ドキュメント全文 ---');
+      parts.push(ctx.fileContent);
+      parts.push('--- ここまで ---');
+    } else {
+      parts.push(`--- ドキュメント冒頭 (${FILE_CONTENT_LIMIT} 文字、全文は Read で ${relPath} を参照) ---`);
+      parts.push(ctx.fileContent.slice(0, FILE_CONTENT_LIMIT));
+      parts.push('--- ここまで ---');
+    }
     parts.push('');
+  }
+
+  if (selection) {
+    parts.push('選択部分:');
     parts.push('```');
     parts.push(selection);
     parts.push('```');
     parts.push('');
-  } else {
-    parts.push(`対象ドキュメント: "${ctx.title}" (${relPath})`);
-    parts.push('必要に応じて Read / Glob / Grep で該当ファイルや周辺を読んで答えてください。');
-    parts.push('');
   }
+
   parts.push(`質問: ${question}`);
   return parts.join('\n');
 }

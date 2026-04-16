@@ -1,5 +1,5 @@
-import { byId, clear, createEl } from './dom.js';
-import type { TreeNode } from './types.js';
+import { byId, clear, createEl } from './dom';
+import type { TreeNode } from './types';
 
 // Cmd+P クイックスイッチャー。ファイル名にインクリメンタル絞り込み。
 export interface Palette {

@@ -3,8 +3,8 @@ node_modules/
 src-tauri/target/
 target/
 
-# TypeScript compile output (生成物は commit しない。tauri:* スクリプトが毎回生成)
-frontend/js/
+# Vite build output
+dist/
 
 *.key
 *.key.pub

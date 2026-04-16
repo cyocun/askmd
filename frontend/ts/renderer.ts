@@ -1,8 +1,39 @@
-import type { Frontmatter } from './types.js';
+import type { Frontmatter } from './types';
+import MarkdownIt from 'markdown-it';
+import markdownitFootnote from 'markdown-it-footnote';
+import katex from 'katex';
+import mermaid from 'mermaid';
+import hljs from 'highlight.js/lib/core';
+import DOMPurify from 'dompurify';
 
-declare const katex: { renderToString(tex: string, opts?: Record<string, unknown>): string };
-declare const mermaid: { initialize(config: Record<string, unknown>): void; run(opts: Record<string, unknown>): Promise<void> };
-declare const markdownitFootnote: (md: any) => void;
+import 'katex/dist/katex.min.css';
+
+// highlight.js 言語登録
+import bash from 'highlight.js/lib/languages/bash';
+import javascript from 'highlight.js/lib/languages/javascript';
+import typescript from 'highlight.js/lib/languages/typescript';
+import python from 'highlight.js/lib/languages/python';
+import json from 'highlight.js/lib/languages/json';
+import yaml from 'highlight.js/lib/languages/yaml';
+import css from 'highlight.js/lib/languages/css';
+import xml from 'highlight.js/lib/languages/xml';
+import diff from 'highlight.js/lib/languages/diff';
+import sql from 'highlight.js/lib/languages/sql';
+
+hljs.registerLanguage('bash', bash);
+hljs.registerLanguage('shell', bash);
+hljs.registerLanguage('javascript', javascript);
+hljs.registerLanguage('js', javascript);
+hljs.registerLanguage('typescript', typescript);
+hljs.registerLanguage('ts', typescript);
+hljs.registerLanguage('python', python);
+hljs.registerLanguage('json', json);
+hljs.registerLanguage('yaml', yaml);
+hljs.registerLanguage('css', css);
+hljs.registerLanguage('xml', xml);
+hljs.registerLanguage('html', xml);
+hljs.registerLanguage('diff', diff);
+hljs.registerLanguage('sql', sql);
 
 // ─── KaTeX: markdown-it inline/block ルール ───
 
@@ -58,7 +89,7 @@ function renderKatex(tex: string, displayMode: boolean): string {
 
 // ─── markdown-it 構築 ───
 
-const md = window.markdownit({
+const md = MarkdownIt({
   html: true,
   breaks: true,
   linkify: true,
@@ -68,17 +99,15 @@ const md = window.markdownit({
       return `<pre class="mermaid">${str}</pre>`;
     }
     if (lang && hljs.getLanguage(lang)) {
-      try { return hljs.highlight(str, { language: lang }).value; } catch {}
+      try { return hljs.highlight(str, { language: lang }).value; } catch { /* ignore */ }
     }
-    try { return hljs.highlightAuto(str).value; } catch {}
+    try { return hljs.highlightAuto(str).value; } catch { /* ignore */ }
     return '';
   },
 });
 
 // ─── 脚注プラグイン ───
-if (typeof markdownitFootnote === 'function') {
-  md.use(markdownitFootnote);
-}
+md.use(markdownitFootnote);
 
 // ─── ==highlight== マーカー ───
 function highlightInline(state: any, silent: boolean): boolean {
@@ -104,18 +133,16 @@ function highlightInline(state: any, silent: boolean): boolean {
 md.inline.ruler.after('emphasis', 'mark', highlightInline);
 
 // ─── チェックボックス (タスクリスト) ───
-// `- [x]` / `- [ ]` をチェックボックスに変換
 const defaultListItemOpen = md.renderer.rules.list_item_open || function(tokens: any[], idx: number, options: any, _env: any, self: any) {
   return self.renderToken(tokens, idx, options);
 };
 md.renderer.rules.list_item_open = function(tokens: any[], idx: number, options: any, env: any, self: any) {
-  const contentToken = tokens[idx + 2]; // inline token
+  const contentToken = tokens[idx + 2];
   if (contentToken && contentToken.type === 'inline' && contentToken.content) {
     const m = contentToken.content.match(/^\[([ xX])\]\s*/);
     if (m) {
       const checked = m[1] !== ' ';
       contentToken.content = contentToken.content.slice(m[0].length);
-      // children から先頭のチェックボックステキストを除去
       if (contentToken.children && contentToken.children.length > 0) {
         const first = contentToken.children[0];
         if (first.type === 'text') {
@@ -136,9 +163,7 @@ md.inline.ruler.after('escape', 'math_inline', mathInline);
 md.renderer.rules['math_block'] = (tokens: any[], idx: number) => renderKatex(tokens[idx].content, true);
 md.renderer.rules['math_inline'] = (tokens: any[], idx: number) => renderKatex(tokens[idx].content, false);
 
-// mermaid フェンスのレンダリング: highlight 内で <pre class="mermaid"> を返すが、
-// markdown-it のデフォルト fence ルールが外側に <pre><code> を被せるため
-// fence ルールをオーバーライドして mermaid だけ特別扱いする。
+// mermaid フェンスのレンダリング
 const defaultFence = md.renderer.rules.fence!;
 md.renderer.rules.fence = (tokens: any[], idx: number, options: any, env: any, self: any) => {
   const token = tokens[idx];
@@ -154,13 +179,10 @@ function getMermaidTheme(): string {
   return t.includes('dark') ? 'dark' : 'default';
 }
 
-if (typeof mermaid !== 'undefined') {
-  mermaid.initialize({ startOnLoad: false, theme: getMermaidTheme(), securityLevel: 'loose' });
-}
+mermaid.initialize({ startOnLoad: false, theme: getMermaidTheme() as any, securityLevel: 'loose' });
 
 export function reinitMermaidTheme(): void {
-  if (typeof mermaid === 'undefined') return;
-  mermaid.initialize({ startOnLoad: false, theme: getMermaidTheme(), securityLevel: 'loose' });
+  mermaid.initialize({ startOnLoad: false, theme: getMermaidTheme() as any, securityLevel: 'loose' });
 }
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
@@ -181,13 +203,11 @@ function expandIcon(): SVGElement {
   return svg;
 }
 
-// DOM に描画済みの .mermaid 要素をレンダリングし、拡大ボタンを追加する
 export async function renderMermaidBlocks(): Promise<void> {
-  if (typeof mermaid === 'undefined') return;
   const blocks = document.querySelectorAll('.mermaid');
   if (blocks.length === 0) return;
   try {
-    await mermaid.run({ nodes: blocks });
+    await mermaid.run({ nodes: blocks as any });
   } catch (e) {
     console.warn('mermaid render error:', e);
     return;
@@ -261,7 +281,6 @@ export function processAdmonitions(body: HTMLElement): void {
     const info = ADMONITION_MAP[key];
     if (!info) return;
     bq.classList.add('admonition', info.cls);
-    // ラベルを挿入し、マッチ部分を除去
     const label = document.createElement('strong');
     label.className = 'admonition-title';
     label.textContent = info.label;
@@ -318,6 +337,28 @@ export function extractTitle(body: string, fm: Frontmatter, fallback: string): s
   const m = body.match(/^\s*#\s+(.+?)\s*$/m);
   if (m) return m[1];
   return fallback.replace(/\.md$/i, '');
+}
+
+// コードブロックにコピーボタンを追加
+export function addCopyButtons(container: HTMLElement): void {
+  container.querySelectorAll('pre').forEach((pre) => {
+    if (pre.classList.contains('mermaid') || pre.querySelector('.code-copy-btn')) return;
+    const btn = document.createElement('button');
+    btn.className = 'code-copy-btn';
+    btn.textContent = 'Copy';
+    btn.addEventListener('click', async (ev) => {
+      ev.stopPropagation();
+      const code = pre.querySelector('code');
+      const text = code?.textContent || pre.textContent || '';
+      try {
+        await navigator.clipboard.writeText(text);
+        btn.textContent = 'Copied!';
+        btn.classList.add('copied');
+        setTimeout(() => { btn.textContent = 'Copy'; btn.classList.remove('copied'); }, 1500);
+      } catch { /* clipboard API blocked */ }
+    });
+    pre.appendChild(btn);
+  });
 }
 
 export function render(markdown: string): string {

@@ -5,28 +5,11 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
   <title>askmd</title>
-  <script src="vendor/markdown-it.min.js"></script>
-  <script src="vendor/markdown-it-footnote.min.js"></script>
-  <script src="vendor/purify.min.js"></script>
-  <script src="vendor/mermaid.min.js"></script>
-  <script src="vendor/katex.min.js"></script>
-  <link rel="stylesheet" href="vendor/katex.min.css">
-  <link rel="stylesheet" href="vendor/hljs-github.min.css" id="hljs-theme-light">
-  <link rel="stylesheet" href="vendor/github-dark-dimmed.min.css" id="hljs-theme-dark" disabled>
-  <link rel="stylesheet" href="vendor/hljs-solarized-light.min.css" id="hljs-theme-solarized-light" disabled>
-  <link rel="stylesheet" href="vendor/hljs-solarized-dark.min.css" id="hljs-theme-solarized-dark" disabled>
-  <script src="vendor/highlight.min.js"></script>
-  <script src="vendor/hljs-bash.min.js"></script>
-  <script src="vendor/hljs-javascript.min.js"></script>
-  <script src="vendor/hljs-typescript.min.js"></script>
-  <script src="vendor/hljs-python.min.js"></script>
-  <script src="vendor/hljs-json.min.js"></script>
-  <script src="vendor/hljs-yaml.min.js"></script>
-  <script src="vendor/hljs-css.min.js"></script>
-  <script src="vendor/hljs-xml.min.js"></script>
-  <script src="vendor/hljs-diff.min.js"></script>
-  <script src="vendor/hljs-sql.min.js"></script>
-  <link rel="stylesheet" href="styles/app.css">
+  <!-- hljs テーマ CSS (テーマ切替で disabled トグル) -->
+  <link rel="stylesheet" href="/hljs-github.min.css" id="hljs-theme-light">
+  <link rel="stylesheet" href="/github-dark-dimmed.min.css" id="hljs-theme-dark" disabled>
+  <link rel="stylesheet" href="/hljs-solarized-light.min.css" id="hljs-theme-solarized-light" disabled>
+  <link rel="stylesheet" href="/hljs-solarized-dark.min.css" id="hljs-theme-solarized-dark" disabled>
 </head>
 <body>
   <!-- タイトルバー (macOS traffic light の領域、全幅ドラッグ可能) -->
@@ -106,6 +89,6 @@
     </div>
   </div>
 
-  <script type="module" src="js/app.js"></script>
+  <script type="module" src="/ts/app.ts"></script>
 </body>
 </html>

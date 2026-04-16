@@ -33,9 +33,11 @@
 - デフォルトは **インライン**: 選択 → `Cmd+L` → `claude -p "質問"` を子プロセス実行 → 右ペイン下部に回答描画
 - 将来: ターミナルで開くモード (`osascript` 経由で Terminal/iTerm に `claude` を流す)、Claude Desktop 連携 (現状 deep link でプロンプトプリフィル不可、将来対応)
 
-## コード規約 (csm から継承)
+## コード規約
 
-- フロントエンドはバンドラを入れず `tsc` のみでコンパイル (`npm run build:frontend`)。ES Modules でファイル分割、`import ... from './foo.js'` 形式
+- フロントエンドは **Vite** でバンドル。TypeScript ソースは `frontend/ts/`、CSS は `frontend/styles/`
+- ライブラリは npm パッケージとして管理（`import MarkdownIt from 'markdown-it'` 形式）
+- Tauri API は `@tauri-apps/api` から import（`import { invoke } from '@tauri-apps/api/core'`）
 - DOM は `innerHTML` を使わず、`createEl()` / `svgEl()` などの DOM API ヘルパー経由で構築する
 - アイコンは Tabler Icons (24x24 viewBox、stroke-width:2)。`frontend/icons/` に SVG を追加し `frontend/ts/icons.ts` で参照
 - 日本語コメント可。ただしコードで語れる内容は書かない — コメントは「なぜ」だけに絞る
@@ -45,10 +47,10 @@
 - メインレイアウトは CSS Grid
 - Grid 子要素の overflow は `min-height: 0` を明示しないと効かない
 
-## バックエンド規約 (csm から継承)
+## バックエンド規約
 
 - Tauri コマンドは `src-tauri/src/commands/{domain}.rs` にドメインごとに分割
-- フロントがバンドラレスで Tauri プラグインの JS API を直接 import できないため、プラグインを使う機能は Rust 側でラップした `#[tauri::command]` を追加し、JS からは `invoke('...')` で呼び出す
+- プラグイン機能は Rust 側でラップした `#[tauri::command]` を追加し、JS からは `invoke('...')` で呼び出す
 
 ## 実装済み機能
 
@@ -79,7 +81,14 @@
 - 自動アップデータ (`tauri-plugin-updater`、起動 5 秒後 + 6 時間周期)
 - GitHub Actions リリースワークフロー (`v*` タグで macOS .dmg ビルド)
 
-## 未実装 / Phase 2 以降
+### Phase 2
+- Vite バンドラ導入 (vendor/ 全廃止、npm パッケージ化、`@tauri-apps/api` 正規 import)
+- コードブロックのコピーボタン (ホバーで Copy ボタン表示)
+- 読書位置の記憶 (localStorage に永続化、ファイル再オープン時に復元)
+- AI にファイル全体をコンテキスト (選択なし Cmd+L でファイル全体について質問可能)
+- 簡易編集 (`Cmd+E` でレンダリング ↔ CodeMirror 6 ソース編集トグル、`Cmd+S` 保存、`Escape` キャンセル)
+
+## 未実装 / Phase 3 以降
 
 - macOS コード署名 / Notarization
 - 変更差分ハイライト
