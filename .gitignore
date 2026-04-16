@@ -8,3 +8,6 @@ frontend/js/
 
 *.key
 *.key.pub
+
+# 内部設計メモ (CONCEPT.md 等) は非公開
+docs/

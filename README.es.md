@@ -12,13 +12,31 @@
 
 Si usas Claude Code a diario, tu carpeta `docs/` se llena rápido: notas de diseño, resúmenes de investigación, documentos de traspaso, síntesis de revisiones. El problema no es *escribirlos* — es *leerlos* después sin tener que abrir un editor pesado cada vez.
 
-- **VS Code Markdown Preview** mezcla los documentos con ruido del código
-- **Obsidian** es potente pero pesado, con Vault y plugins que no necesitas solo para *leer*
-- **Typora** es de pago y está orientado a la edición
-- **markdown-explorer** tenía la idea correcta pero se detuvo en 2018
-- **Ferrite** es ligero pero edita todo tipo de archivos, no solo `.md`
-
 askmd llena ese hueco: **un visor exclusivamente de `.md` con navegación por directorios, más la capacidad de preguntarle a Claude sobre cualquier pasaje seleccionado** — reutilizando la autenticación de tu CLI `claude`, sin claves de API que gestionar.
+
+### Comparación con herramientas existentes
+
+| Herramienta | Limitación que askmd resuelve |
+|---|---|
+| VS Code Markdown Preview | Documentos mezclados con código; sin modo de lectura tranquilo |
+| Obsidian | Pesado; Vault/plugins excesivos para solo leer |
+| Typora | De pago; orientado a edición, no a lectura |
+| MarkView | Visor de archivo único; sin árbol de directorios |
+| markdown-explorer | Concepto acertado pero abandonado en 2018 (Electron) |
+| Ferrite | Ligero pero edita de todo, no es exclusivo de `.md` |
+| MDChat | Solo CLI; sin GUI ni navegación de directorios |
+
+**Combinación única de askmd**: exclusivo de `.md` + árbol de directorios + GUI ligera + Q&A con Claude CLI (sin gestión de claves).
+
+## Filosofía de diseño
+
+Cinco pilares que guían cada decisión:
+
+1. **Instantáneo y ligero** — Tauri (Rust + WebView), sin bundler, renderizado cacheado en memoria. Objetivo: más ligero que Obsidian, para que nunca dudes en abrirlo.
+2. **Teclado primero** — Navegación completa sin tocar el ratón. `↑↓` para explorar, `Enter` para abrir, `@` para filtrar, `Cmd+P` para cambiar, `Cmd+L` para preguntar.
+3. **Solo `.md`** — Sin JSON, YAML, archivos de código ni directorios ocultos en el árbol. Una barrera de ruido deliberada que evita la expansión de funciones.
+4. **Claude mediante CLI existente** — Sin clave de API, sin facturación adicional. El subproceso `claude -p` reutiliza tu suscripción Max/Pro. Una experiencia similar a "preguntar sobre la selección" de Cursor, local, dentro de tu plan actual.
+5. **Visor, no editor** — Sin edición, barra de herramientas ni botón de guardar. Edita en VS Code/Neovim/Zed; askmd detecta los cambios y los refleja al instante.
 
 ## ¿Para quién es?
 
@@ -36,7 +54,8 @@ No es para: quien busca un *editor* de Markdown, quien necesita gestión de nota
 - Observación de archivos (`notify` crate): las ediciones en tu editor externo se reflejan al instante
 - Extracción de front-matter → cabecera con título / fecha / etiquetas
 - Navegación entre `.md` vía enlaces relativos; imágenes resueltas en el mismo directorio
-- **Seleccionar → `Cmd+L` → respuesta de Claude en el panel derecho** (vía subproceso `claude -p`)
+- Búsqueda de texto completo en todos los archivos `.md` (`Cmd+F`)
+- **Seleccionar → `Cmd+L` → respuesta de Claude en streaming en el panel derecho** (vía subproceso `claude -p`)
 
 ## Atajos de teclado
 
@@ -44,8 +63,9 @@ No es para: quien busca un *editor* de Markdown, quien necesita gestión de nota
 |---|---|
 | `↑` `↓` / `j` `k` | Mover en el árbol |
 | `Enter` | Abrir archivo |
-| `/` | Filtro incremental |
+| `@` | Filtro incremental |
 | `Cmd+P` | Cambio rápido de archivo |
+| `Cmd+F` | Búsqueda de texto completo |
 | `Cmd+[` / `Cmd+]` | Atrás / adelante en historial |
 | `Cmd+L` | Preguntar a Claude sobre el texto seleccionado |
 
@@ -61,7 +81,7 @@ npm run tauri:dev      # modo desarrollo
 npm run tauri:build    # build de release
 ```
 
-Abre un directorio desde el diálogo o pásalo como argumento:
+Abre un directorio desde el diálogo, arrastra una carpeta a la ventana, o pásalo como argumento:
 
 ```sh
 askmd ~/myrepo/docs
@@ -69,17 +89,15 @@ askmd ~/myrepo/docs
 
 ## Cómo funciona "Preguntar a Claude"
 
-Selecciona texto en la vista renderizada y pulsa `Cmd+L`. askmd ejecuta `claude -p "<prompt con la selección>"` como subproceso y transmite la respuesta al panel derecho. Sin configurar claves de API, sin facturación aparte — tu suscripción existente de Claude Code hace el trabajo.
+Selecciona texto en la vista renderizada y pulsa `Cmd+L`. askmd ejecuta `claude -p "<prompt con la selección>"` como subproceso y transmite la respuesta en streaming al panel derecho. Sin configurar claves de API, sin facturación aparte — tu suscripción existente de Claude Code hace el trabajo.
 
 Próximamente: modo de paso a terminal (sesiones largas vía iTerm/Terminal) y soporte de deep-link para Claude Desktop.
 
 ## Hoja de ruta
 
-Fase 1 (MVP, en curso): árbol, renderizado, navegación por teclado, observación de archivos, Q&A en línea con `Cmd+L`.
+Fase 1 (MVP, en curso): árbol, renderizado, navegación por teclado, observación de archivos, búsqueda de texto completo, Q&A en streaming con `Cmd+L`.
 
-Fase 2+: búsqueda de texto completo (tantivy), modo terminal, UI de directorios recientes, actualizador automático, distribución de releases.
-
-Contexto, filosofía de diseño y tabla completa de comparación en [docs/CONCEPT.md](docs/CONCEPT.md).
+Fase 2+: búsqueda con tantivy, modo terminal, UI de directorios recientes, actualizador automático, distribución de releases.
 
 ## Apoyo
 
