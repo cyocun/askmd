@@ -71,6 +71,14 @@ askmd는 이 틈을 채웁니다: **`.md` 전용 뷰어 + 디렉터리 탐색 + 
 
 ## 설치 / 빌드
 
+### Homebrew (macOS)
+
+```sh
+brew install --cask cyocun/tap/askmd
+```
+
+### 소스에서 빌드
+
 요구사항: Rust 툴체인, Node.js, `PATH`에 `claude` CLI.
 
 ```sh

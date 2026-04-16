@@ -71,6 +71,14 @@ askmd はその隙間を埋める: **`.md` 専用のビューア + ディレク�
 
 ## インストール / ビルド
 
+### Homebrew (macOS)
+
+```sh
+brew install --cask cyocun/tap/askmd
+```
+
+### ソースからビルド
+
 必要: Rust ツールチェーン、Node.js、`claude` CLI が `PATH` にあること。
 
 ```sh

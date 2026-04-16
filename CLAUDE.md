@@ -78,6 +78,7 @@
 - `.md` ファイルアソシエーション (Finder からダブルクリックで開く)
 - 自動アップデータ (`tauri-plugin-updater`、起動 5 秒後 + 6 時間周期)
 - GitHub Actions リリースワークフロー (`v*` タグで macOS .dmg ビルド)
+- Homebrew Cask (`brew install --cask cyocun/tap/askmd`、リリース公開時に自動更新)
 
 ## 未実装 / Phase 2 以降
 
@@ -85,5 +86,4 @@
 - Claude Desktop 連携 (API が来たら)
 - 軽量編集 (`Cmd+E` → CodeMirror 6 ソース編集)
 - 分割表示 (side-by-side 2 ファイル比較)
-- Homebrew Cask (`brew install --cask askmd`)
 - macOS コード署名 / Notarization
