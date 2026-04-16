@@ -400,6 +400,22 @@ fn handle_claude_message(app: &AppHandle, request_id: &str, v: &serde_json::Valu
                 let _ = app.emit("ask-stream", ev);
             }
         }
+        // content_block_delta: テキストの逐次チャンク
+        "content_block_delta" => {
+            if let Some(delta) = v.get("delta") {
+                let dt = delta.get("type").and_then(|t| t.as_str()).unwrap_or("");
+                if dt == "text_delta" {
+                    if let Some(text) = delta.get("text").and_then(|t| t.as_str()) {
+                        if !text.is_empty() {
+                            let mut ev = StreamEvent::new(request_id, "text");
+                            ev.text = Some(text.to_string());
+                            let _ = app.emit("ask-stream", ev);
+                        }
+                    }
+                }
+            }
+        }
+        // assistant: メッセージ (テキスト + ツール呼び出し)
         "assistant" => {
             if let Some(content) = v
                 .get("message")

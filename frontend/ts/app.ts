@@ -887,7 +887,9 @@ void listen('fs-changed', async (ev) => {
     domCache.delete(p);
   }
   if (currentFile && paths.includes(currentFile)) {
+    const scrollTop = docContent.scrollTop;
     await openFile(currentFile);
+    docContent.scrollTop = scrollTop;
   }
   if (currentRoot) {
     const fresh = (await invoke('scan_markdown_tree', { root: currentRoot.path })) as TreeNode | null;

@@ -155,8 +155,17 @@ function createTurn(log: HTMLElement, question: string, deps: AskDeps, root: str
   log.appendChild(turn);
 
   let rawText = '';
-  // 現在のテキストチャンク要素 (ツール挿入でリセット)
   let currentTextEl: HTMLElement | null = null;
+  let currentToolRow: HTMLElement | null = null;
+
+  const renderMd = () => {
+    if (!currentTextEl) return;
+    const html = deps.renderMarkdown(rawText);
+    const doc = new DOMParser().parseFromString(html, 'text/html');
+    while (currentTextEl.firstChild) currentTextEl.removeChild(currentTextEl.firstChild);
+    currentTextEl.classList.add('md-body');
+    while (doc.body.firstChild) currentTextEl.appendChild(doc.body.firstChild);
+  };
 
   return {
     addTool(name, input) {
@@ -164,24 +173,28 @@ function createTurn(log: HTMLElement, question: string, deps: AskDeps, root: str
       while (aStatus.firstChild) aStatus.removeChild(aStatus.firstChild);
       aStatus.appendChild(createEl('span', { class: 'ask-a-spinner' }));
       aStatus.appendChild(createEl('span', {}, t('ask.toolRunning', name)));
+      if (!currentToolRow) {
+        currentToolRow = createEl('div', { class: 'ask-tools' });
+        aFlow.appendChild(currentToolRow);
+      }
       const chip = createEl(
         'span',
         { class: 'ask-tool-chip', title: summary },
         createEl('span', { class: 'ask-tool-name' }, name),
         summary ? createEl('span', { class: 'ask-tool-arg' }, summary) : null,
       );
-      aFlow.appendChild(chip);
-      // ツール後のテキストは新しい要素に
+      currentToolRow.appendChild(chip);
       currentTextEl = null;
     },
     appendText(text) {
       aStatus.hidden = true;
       rawText += text;
+      currentToolRow = null;
       if (!currentTextEl) {
         currentTextEl = createEl('div', { class: 'ask-a' });
         aFlow.appendChild(currentTextEl);
       }
-      currentTextEl.textContent = (currentTextEl.textContent || '') + text;
+      renderMd();
     },
     hasText() {
       return rawText.length > 0;
@@ -194,16 +207,14 @@ function createTurn(log: HTMLElement, question: string, deps: AskDeps, root: str
     },
     finalize(fallbackText) {
       aStatus.hidden = true;
-      const finalText = rawText || fallbackText || '';
-      if (finalText) {
-        // フロー内のテキスト要素をすべて除去し、markdown レンダリングで置換
-        aFlow.querySelectorAll('.ask-a').forEach((el) => el.remove());
-        const rendered = createEl('div', { class: 'ask-a md-body' });
-        const html = deps.renderMarkdown(finalText);
-        const doc = new DOMParser().parseFromString(html, 'text/html');
-        while (doc.body.firstChild) rendered.appendChild(doc.body.firstChild);
-        aFlow.appendChild(rendered);
+      if (!rawText && fallbackText) {
+        rawText = fallbackText;
+        if (!currentTextEl) {
+          currentTextEl = createEl('div', { class: 'ask-a' });
+          aFlow.appendChild(currentTextEl);
+        }
       }
+      renderMd();
     },
   };
 }

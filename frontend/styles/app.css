@@ -1149,9 +1149,6 @@ body.focus-tree .tree-node.selected .tree-outline-indicator {
   flex-direction: column;
   gap: 4px;
 }
-.ask-a-flow .ask-tool-chip {
-  align-self: flex-start;
-}
 .ask-a {
   font-size: 13px;
   color: var(--text);
@@ -1182,8 +1179,10 @@ body.focus-tree .tree-node.selected .tree-outline-indicator {
 .ask-a.md-body {
   font-size: 13px;
   max-width: none;
+  margin: 0;
   position: static;
   white-space: normal;
+  text-align: left;
 }
 .ask-a.md-body p { margin: 0.4em 0; }
 .ask-a.md-body p:first-child { margin-top: 0; }
