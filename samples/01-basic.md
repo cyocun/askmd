@@ -51,4 +51,4 @@ tags: [sample, basic]
 
 ## 画像
 
-![placeholder](https://via.placeholder.com/300x100?text=askmd+sample)
+![placeholder](https://placehold.co/300x100?text=askmd+sample)
