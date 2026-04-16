@@ -19,4 +19,3 @@ tokio = { version = "1", features = ["sync", "process", "io-util", "macros", "ti
 tauri-plugin-updater = "2"
 reqwest = { version = "0.12", features = ["json"] }
 urlencoding = "2"
-tantivy = "0.22"
