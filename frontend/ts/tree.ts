@@ -135,12 +135,12 @@ export function createTreeView(
   };
 
   const buildOutlineItem = (item: OutlineItem): HTMLElement => {
-    const marker = '#'.repeat(item.level);
-    const indent = 6 + 12 * item.level + 14;
+    // h1 → 基準 (ファイル行と揃える)、h2/h3 は 1 段ずつ深く
+    const indent = 30 + (item.level - 1) * 14;
     const el = createEl(
       'div',
       {
-        class: 'tree-outline-item',
+        class: `tree-outline-item tree-outline-h${item.level}`,
         style: `padding-left:${indent}px;`,
         onClick: () => {
           selectedKey = `${activePath}#${item.anchorId}`;
@@ -148,7 +148,6 @@ export function createTreeView(
           handlers.onJumpHeading(item.anchorId);
         },
       },
-      createEl('span', { class: 'tree-outline-marker' }, marker),
       createEl('span', {}, item.text),
     );
     rows.push({

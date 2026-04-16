@@ -545,6 +545,12 @@ document.addEventListener('keydown', (ev) => {
 
   // 右ペインフォーカス時は矢印/Space/PageUp/Down でスクロール
   if (document.activeElement === docContent) {
+    // ← で左ペイン (ツリー) にフォーカスを戻す
+    if (ev.key === 'ArrowLeft' || ev.key === 'h') {
+      ev.preventDefault();
+      treeContainer.focus();
+      return;
+    }
     const step = 40;
     const page = Math.max(80, docContent.clientHeight * 0.9);
     if (ev.key === 'ArrowDown' || ev.key === 'j') {
@@ -590,16 +596,18 @@ document.addEventListener('keydown', (ev) => {
     tree.moveSelection(-1);
     schedulePreview();
   } else if (ev.key === 'ArrowRight' || ev.key === 'l') {
-    // ファイル選択状態 → outline モードに入る。未オープンならまず開いてから
     ev.preventDefault();
     if (tree.getNavMode() === 'file') {
+      // ファイル → outline mode に入る
       if (!tree.enterOutlineMode()) {
         const n = tree.getSelectedNode();
         if (n) void openFile(n.path).then(() => tree.enterOutlineMode());
       }
+    } else if (tree.getNavMode() === 'outline') {
+      // outline → さらに → で右ペインにフォーカス移動
+      docContent.focus();
     }
   } else if (ev.key === 'ArrowLeft' || ev.key === 'h') {
-    // outline モード → ファイル選択モードに戻る
     ev.preventDefault();
     tree.exitOutlineMode();
   } else if (ev.key === 'Enter') {
