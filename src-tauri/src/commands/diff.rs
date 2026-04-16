@@ -309,6 +309,144 @@ pub async fn get_diff(path: String, root: String) -> Result<Option<DiffInfo>, St
     .map_err(|e| format!("spawn error: {}", e))?
 }
 
+/// 文字単位ハイライト付きリッチ diff HTML を返す
+#[tauri::command]
+pub async fn get_diff_text(path: String, root: String) -> Result<Option<String>, String> {
+    let file_path = PathBuf::from(&path);
+    let root_path = PathBuf::from(&root);
+    tauri::async_runtime::spawn_blocking(move || {
+        let (old, new) = match get_old_new_content(&file_path, &root_path) {
+            Some(pair) => pair,
+            None => return Ok(None),
+        };
+        if old == new { return Ok(None); }
+        Ok(Some(generate_rich_diff_html(&old, &new)))
+    })
+    .await
+    .map_err(|e| format!("spawn error: {}", e))?
+}
+
+/// ファイルの旧版と現行版を取得
+fn get_old_new_content(path: &Path, root: &Path) -> Option<(String, String)> {
+    let new_content = fs::read_to_string(path).ok()?;
+
+    if let Some(git_root) = git_toplevel(root) {
+        // git: まず uncommitted の旧版 (HEAD)
+        if let Ok(output) = git_command()
+            .args(["show", &format!("HEAD:{}", path.strip_prefix(&git_root).ok()?.to_string_lossy())])
+            .current_dir(&git_root)
+            .output()
+        {
+            if output.status.success() {
+                let head_content = String::from_utf8_lossy(&output.stdout).to_string();
+                if head_content != new_content {
+                    return Some((head_content, new_content));
+                }
+            }
+        }
+        // 直近コミットの前の版
+        if let Some(prev) = git_prev_commit_for_file(path, &git_root) {
+            if let Ok(output) = git_command()
+                .args(["show", &format!("{}:{}", prev, path.strip_prefix(&git_root).ok()?.to_string_lossy())])
+                .current_dir(&git_root)
+                .output()
+            {
+                if output.status.success() {
+                    return Some((String::from_utf8_lossy(&output.stdout).to_string(), new_content));
+                }
+            }
+        }
+        None
+    } else {
+        // スナップショット
+        let snap = snapshot_path(root, path)?;
+        if !snap.exists() { return None; }
+        let old = fs::read_to_string(&snap).ok()?;
+        Some((old, new_content))
+    }
+}
+
+/// 文字単位ハイライト付き HTML を生成
+fn generate_rich_diff_html(old: &str, new: &str) -> String {
+    let diff = TextDiff::from_lines(old, new);
+    let mut html = String::new();
+
+    for (gi, group) in diff.grouped_ops(3).iter().enumerate() {
+        if gi > 0 {
+            html.push_str("<div class=\"diff-sep\">⋯</div>\n");
+        }
+        for op in group {
+            let changes: Vec<_> = diff.iter_changes(op).collect();
+            let mut i = 0;
+            while i < changes.len() {
+                let change = &changes[i];
+                match change.tag() {
+                    ChangeTag::Equal => {
+                        html.push_str("<div class=\"diff-ctx\"><span class=\"diff-sign\"> </span>");
+                        html.push_str(&html_escape(change.value().trim_end_matches('\n')));
+                        html.push_str("</div>\n");
+                        i += 1;
+                    }
+                    ChangeTag::Delete => {
+                        // Delete + Insert のペアを探して文字単位 diff
+                        if i + 1 < changes.len() && changes[i + 1].tag() == ChangeTag::Insert {
+                            let old_line = change.value().trim_end_matches('\n');
+                            let new_line = changes[i + 1].value().trim_end_matches('\n');
+                            let (del_html, ins_html) = char_level_diff(old_line, new_line);
+                            html.push_str(&format!("<div class=\"diff-del\"><span class=\"diff-sign\">−</span>{}</div>\n", del_html));
+                            html.push_str(&format!("<div class=\"diff-add\"><span class=\"diff-sign\">+</span>{}</div>\n", ins_html));
+                            i += 2;
+                        } else {
+                            html.push_str("<div class=\"diff-del\"><span class=\"diff-sign\">−</span>");
+                            html.push_str(&html_escape(change.value().trim_end_matches('\n')));
+                            html.push_str("</div>\n");
+                            i += 1;
+                        }
+                    }
+                    ChangeTag::Insert => {
+                        html.push_str("<div class=\"diff-add\"><span class=\"diff-sign\">+</span>");
+                        html.push_str(&html_escape(change.value().trim_end_matches('\n')));
+                        html.push_str("</div>\n");
+                        i += 1;
+                    }
+                }
+            }
+        }
+    }
+    html
+}
+
+/// 2 つの行の文字単位 diff → (削除側 HTML, 追加側 HTML)
+fn char_level_diff(old: &str, new: &str) -> (String, String) {
+    let diff = TextDiff::from_chars(old, new);
+    let mut del_html = String::new();
+    let mut ins_html = String::new();
+
+    for change in diff.iter_all_changes() {
+        let escaped = html_escape(&change.to_string_lossy());
+        match change.tag() {
+            ChangeTag::Equal => {
+                del_html.push_str(&escaped);
+                ins_html.push_str(&escaped);
+            }
+            ChangeTag::Delete => {
+                del_html.push_str(&format!("<span class=\"diff-em\">{}</span>", escaped));
+            }
+            ChangeTag::Insert => {
+                ins_html.push_str(&format!("<span class=\"diff-em\">{}</span>", escaped));
+            }
+        }
+    }
+    (del_html, ins_html)
+}
+
+fn html_escape(s: &str) -> String {
+    s.replace('&', "&amp;")
+     .replace('<', "&lt;")
+     .replace('>', "&gt;")
+     .replace('"', "&quot;")
+}
+
 #[tauri::command]
 pub async fn mark_as_read(path: String, root: String) {
     let file_path = PathBuf::from(&path);

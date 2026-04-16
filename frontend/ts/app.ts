@@ -473,12 +473,27 @@ function buildFmHeader(
         }
         if (diff && diff.change_count > 0) {
           diffBadge.textContent = t('diff.changed', diff.change_count);
-          diffBadge.title = t('diff.clickToMark');
+          diffBadge.title = t('diff.clickToView');
           diffBadge.hidden = false;
+          let highlighted = false;
           diffBadge.addEventListener('click', () => {
-            void invoke('mark_as_read', { path, root: currentRoot?.path || '' });
-            diffBadge.hidden = true;
-            diffCache.delete(path);
+            const mdBody = docContent.querySelector('.md-body') as HTMLElement | null;
+            if (!mdBody) return;
+            if (highlighted) {
+              mdBody.querySelectorAll('.diff-block-add, .diff-block-change').forEach((el) => {
+                el.classList.remove('diff-block-add', 'diff-block-change');
+              });
+              diffBadge.classList.remove('active');
+              highlighted = false;
+            } else {
+              highlightChangedBlocks(mdBody, diff);
+              diffBadge.classList.add('active');
+              highlighted = true;
+              const first = mdBody.querySelector('.diff-block-add, .diff-block-change');
+              if (first) {
+                first.scrollIntoView({ block: 'center', behavior: 'smooth' });
+              }
+            }
           });
         }
       } catch (e) {
@@ -605,6 +620,26 @@ function renderDoc(
 // ─── 差分ハイライト ───
 const diffCache = new Map<string, DiffInfo | null>();
 
+function highlightChangedBlocks(body: HTMLElement, diff: DiffInfo): void {
+  const changedLines = new Set([...diff.added, ...diff.changed]);
+  body.querySelectorAll('[data-lines]').forEach((el) => {
+    const attr = el.getAttribute('data-lines');
+    if (!attr) return;
+    const [startStr, endStr] = attr.split(',');
+    const start = parseInt(startStr, 10); // 0-based
+    const end = parseInt(endStr, 10);
+    // markdown-it の map は 0-based [start, end)。DiffInfo は 1-based。
+    for (let line = start + 1; line <= end; line++) {
+      if (changedLines.has(line)) {
+        // added と changed を区別
+        const isAdd = diff.added.includes(line);
+        el.classList.add(isAdd ? 'diff-block-add' : 'diff-block-change');
+        break;
+      }
+    }
+  });
+}
+
 async function loadChangeBadges(root: string): Promise<void> {
   try {
     const changed = (await invoke('get_changed_files', { root })) as FileChangeInfo[];
@@ -657,6 +692,45 @@ async function loadRoot(path: string): Promise<void> {
     }
   } catch (e) {
     showToast(t('toast.scanFail', String(e)));
+  }
+}
+
+// ─── Diff ビュー (文字単位ハイライト付き) ───
+async function showDiffView(path: string, root: string): Promise<void> {
+  try {
+    const diffHtml = (await invoke('get_diff_text', { path, root })) as string | null;
+    if (!diffHtml) {
+      showToast(t('changes.none'));
+      return;
+    }
+    const filename = path.split('/').pop() || path;
+
+    const overlay = createEl('div', { class: 'changes-overlay' });
+    const panel = createEl('div', { class: 'diff-view-panel' });
+    const header = createEl('div', { class: 'changes-header' },
+      createEl('span', {}, filename),
+      createEl('button', { class: 'btn-ghost', onClick: close }, '×'),
+    );
+    const content = createEl('div', { class: 'diff-view-content' });
+    // Rust 側で HTML エスケープ済みの構造化 HTML を挿入
+    const doc = new DOMParser().parseFromString(diffHtml, 'text/html');
+    while (doc.body.firstChild) content.appendChild(doc.body.firstChild);
+
+    panel.appendChild(header);
+    panel.appendChild(content);
+    overlay.appendChild(panel);
+    document.body.appendChild(overlay);
+
+    function close() { overlay.remove(); }
+    overlay.addEventListener('click', (ev) => {
+      if (ev.target === overlay) close();
+    });
+    const onKey = (ev: KeyboardEvent) => {
+      if (ev.key === 'Escape') { close(); document.removeEventListener('keydown', onKey); }
+    };
+    document.addEventListener('keydown', onKey);
+  } catch (e) {
+    console.warn('get_diff_text failed:', e);
   }
 }
 

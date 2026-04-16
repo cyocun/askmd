@@ -879,8 +879,24 @@ body.focus-tree .tree-node.selected .tree-outline-indicator {
   border-color: transparent;
   font-weight: 600;
 }
-.doc-diff-badge:hover {
-  opacity: 0.7;
+.doc-diff-badge:hover { opacity: 0.7; }
+.doc-diff-badge.active {
+  background: var(--accent);
+  color: #fff !important;
+}
+
+/* ─── レンダリング済み markdown 上の差分ハイライト ─── */
+.diff-block-add {
+  border-left: 3px solid #3fb950;
+  background: rgba(76, 175, 80, 0.08);
+  padding-left: 10px !important;
+  margin-left: -13px;
+}
+.diff-block-change {
+  border-left: 3px solid #d29922;
+  background: rgba(210, 153, 34, 0.08);
+  padding-left: 10px !important;
+  margin-left: -13px;
 }
 
 /* ─── 変更ファイル一覧パネル ─── */
@@ -963,6 +979,66 @@ body.focus-tree .tree-node.selected .tree-outline-indicator {
   background: var(--accent-soft);
   padding: 2px 8px;
   border-radius: 10px;
+}
+
+/* ─── Diff ビュー ─── */
+.diff-view-panel {
+  width: 780px;
+  max-width: 95vw;
+  max-height: 80vh;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.35);
+  overflow: hidden;
+  display: grid;
+  grid-template-rows: auto 1fr;
+}
+.diff-view-content {
+  overflow: auto;
+  padding: 8px 0;
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 12.5px;
+  line-height: 1.55;
+}
+.diff-view-content > div {
+  padding: 0 14px 0 8px;
+  white-space: pre-wrap;
+  word-break: break-all;
+  min-height: 1.55em;
+}
+.diff-ctx { color: var(--text-secondary); }
+.diff-add {
+  background: rgba(76, 175, 80, 0.12);
+  color: var(--text);
+}
+.diff-del {
+  background: rgba(244, 67, 54, 0.12);
+  color: var(--text);
+}
+.diff-sign {
+  display: inline-block;
+  width: 16px;
+  text-align: center;
+  margin-right: 4px;
+  color: var(--text-faint);
+  user-select: none;
+}
+.diff-add .diff-sign { color: #3fb950; }
+.diff-del .diff-sign { color: #f85149; }
+.diff-em {
+  border-radius: 2px;
+  padding: 0 1px;
+}
+.diff-add .diff-em { background: rgba(76, 175, 80, 0.35); }
+.diff-del .diff-em { background: rgba(244, 67, 54, 0.35); }
+.diff-sep {
+  text-align: center;
+  color: var(--text-faint);
+  font-size: 11px;
+  padding: 6px 0;
+  border-top: 1px dashed var(--border-subtle);
+  margin-top: 4px;
 }
 
 .md-body pre code {

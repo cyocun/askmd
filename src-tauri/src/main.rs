@@ -50,6 +50,7 @@ fn main() {
             commands::finder::reveal_in_finder,
             commands::finder::open_url,
             commands::diff::get_diff,
+            commands::diff::get_diff_text,
             commands::diff::mark_as_read,
             commands::diff::get_changed_files,
         ])

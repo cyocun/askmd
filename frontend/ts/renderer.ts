@@ -106,6 +106,16 @@ const md = MarkdownIt({
   },
 });
 
+// ─── ブロック要素にソース行番号を埋め込む (diff ハイライト用) ───
+const defaultRenderToken = md.renderer.renderToken.bind(md.renderer);
+md.renderer.renderToken = function(tokens: any[], idx: number, options: any) {
+  const token = tokens[idx];
+  if (token.map && token.nesting === 1) {
+    token.attrSet('data-lines', `${token.map[0]},${token.map[1]}`);
+  }
+  return defaultRenderToken(tokens, idx, options);
+};
+
 // ─── 脚注プラグイン ───
 md.use(markdownitFootnote);
 
@@ -363,7 +373,7 @@ export function addCopyButtons(container: HTMLElement): void {
 
 export function render(markdown: string): string {
   return DOMPurify.sanitize(md.render(markdown), {
-    ADD_ATTR: ['target', 'rel', 'checked', 'disabled', 'type'],
+    ADD_ATTR: ['target', 'rel', 'checked', 'disabled', 'type', 'data-lines'],
     ADD_TAGS: ['input', 'details', 'summary', 'mark', 'semantics', 'annotation', 'mrow', 'mi', 'mo', 'mn', 'ms', 'mtext', 'mfrac', 'msqrt', 'mroot', 'msup', 'msub', 'msubsup', 'munder', 'mover', 'munderover', 'mtable', 'mtr', 'mtd', 'mspace', 'mphantom', 'mpadded', 'menclose', 'math'],
   });
 }

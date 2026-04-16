@@ -50,7 +50,7 @@ const translations: Record<string, Record<Lang, string>> = {
   'toast.saveFail': { ja: '保存失敗: {0}', en: 'Save failed: {0}' },
   // ─ Diff / Changes ─
   'diff.changed': { ja: '{0} 行変更', en: '{0} lines changed' },
-  'diff.clickToMark': { ja: 'クリックで既読マーク', en: 'Click to mark as read' },
+  'diff.clickToView': { ja: 'クリックで差分を表示', en: 'Click to view diff' },
   'changes.title': { ja: '変更ファイル ({0})', en: 'Changed Files ({0})' },
   'changes.none': { ja: '変更のあるファイルはありません', en: 'No changed files' },
   'changes.fail': { ja: '変更ファイルの取得に失敗しました', en: 'Failed to get changed files' },
