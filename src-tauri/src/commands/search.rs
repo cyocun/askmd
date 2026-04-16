@@ -20,30 +20,9 @@ struct FileCache {
 static FILE_CACHE: std::sync::LazyLock<Mutex<HashMap<String, FileCache>>> =
     std::sync::LazyLock::new(|| Mutex::new(HashMap::new()));
 
-fn collect_md_files(dir: &Path, out: &mut Vec<PathBuf>) {
-    if dir.is_file() {
-        if util::is_markdown(dir) {
-            out.push(dir.to_path_buf());
-        }
-        return;
-    }
-    let Some(name) = dir.file_name().and_then(|n| n.to_str()) else {
-        return;
-    };
-    if util::should_skip_dir(name) {
-        return;
-    }
-    let Ok(entries) = fs::read_dir(dir) else {
-        return;
-    };
-    for e in entries.flatten() {
-        collect_md_files(&e.path(), out);
-    }
-}
-
 fn build_cache(root: &Path) -> FileCache {
     let mut md_files = Vec::new();
-    collect_md_files(root, &mut md_files);
+    util::collect_md_paths(root, &mut md_files);
     let mut files = HashMap::new();
     for path in &md_files {
         if let Ok(content) = fs::read_to_string(path) {

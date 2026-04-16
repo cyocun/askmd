@@ -19,7 +19,7 @@ pub struct TreeNode {
 
 // ファイル先頭 100 行を読み、frontmatter title か最初の `# 見出し` を返す。
 // 見つからなければ None。I/O エラーも None。
-fn extract_title(path: &Path) -> Option<String> {
+pub(super) fn extract_title(path: &Path) -> Option<String> {
     let file = fs::File::open(path).ok()?;
     let reader = BufReader::new(file);
     let mut in_fm = false;

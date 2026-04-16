@@ -142,6 +142,13 @@ export function createTreeView(
     });
     el.appendChild(iconFile());
     el.appendChild(nameWrap);
+    if (node.has_changes) {
+      const badge = createEl('span', {
+        class: 'tree-change-badge',
+        title: `${node.change_count || '?'} lines changed`,
+      });
+      el.appendChild(badge);
+    }
     if (indicator) el.appendChild(indicator);
     el.appendChild(delBtn);
     rows.push({ kind: 'file', key: node.path, node, el });

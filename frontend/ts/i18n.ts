@@ -48,6 +48,16 @@ const translations: Record<string, Record<Lang, string>> = {
   'toast.openFile': { ja: '先にファイルを開いてください', en: 'Open a file first' },
   'toast.saved': { ja: '保存しました', en: 'Saved' },
   'toast.saveFail': { ja: '保存失敗: {0}', en: 'Save failed: {0}' },
+  // ─ Diff / Changes ─
+  'diff.changed': { ja: '{0} 行変更', en: '{0} lines changed' },
+  'changes.title': { ja: '変更ファイル ({0})', en: 'Changed Files ({0})' },
+  'changes.none': { ja: '変更のあるファイルはありません', en: 'No changed files' },
+  'changes.fail': { ja: '変更ファイルの取得に失敗しました', en: 'Failed to get changed files' },
+  // ─ Edit ─
+  'edit.btn': { ja: '編集', en: 'Edit' },
+  'header.edit': { ja: '編集 (⌘E)', en: 'Edit (⌘E)' },
+  // ─ Toolbar ─
+  'tb.changes': { ja: '変更ファイル', en: 'Changed Files' },
   'toast.switched': { ja: '{0} に切り替えました', en: 'Switched to {0}' },
   // ─ Provider ─
   'provider.title': { ja: 'AI プロバイダー切替', en: 'Switch AI Provider' },

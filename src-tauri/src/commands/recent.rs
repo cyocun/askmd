@@ -1,3 +1,4 @@
+use super::util;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
@@ -11,7 +12,7 @@ pub struct RecentDir {
 }
 
 fn recent_file() -> Option<PathBuf> {
-    dirs::data_dir().map(|d| d.join("com.cyocun.askmd").join("recent.json"))
+    util::app_data_dir().map(|d| d.join("recent.json"))
 }
 
 fn load() -> Vec<RecentDir> {

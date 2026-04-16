@@ -49,6 +49,9 @@ fn main() {
             commands::recent::add_recent_dir,
             commands::finder::reveal_in_finder,
             commands::finder::open_url,
+            commands::diff::get_diff,
+            commands::diff::mark_as_read,
+            commands::diff::get_changed_files,
         ])
         .menu(|handle| menu::build(handle))
         .on_menu_event(menu::handle_event)

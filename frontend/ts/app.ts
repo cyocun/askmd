@@ -8,7 +8,7 @@ import { createTreeView } from './tree';
 import { addCopyButtons, extractTitle, parseFrontmatter, processAdmonitions, render, renderMermaidBlocks } from './renderer';
 import { currentTheme, initTheme } from './theme';
 import { initLang, getLang, toggleLang, t } from './i18n';
-import type { OutlineItem, TreeNode } from './types';
+import type { DiffInfo, FileChangeInfo, OutlineItem, TreeNode } from './types';
 import { createEditor } from './editor';
 import type { EditorHandle } from './editor';
 import { invoke, convertFileSrc } from '@tauri-apps/api/core';
@@ -445,6 +445,15 @@ function buildFmHeader(
     dataset: { role: 'translate' },
     onClick: () => void translateCurrentDoc(),
   }, t('translate.btn')));
+  actions.appendChild(createEl('button', {
+    class: 'doc-action-btn',
+    title: t('header.edit'),
+    dataset: { role: 'edit' },
+    onClick: () => {
+      if (activeEditor) exitEditMode();
+      else void enterEditMode();
+    },
+  }, t('edit.btn')));
   infoRow.appendChild(actions);
 
   container.appendChild(infoRow);
@@ -559,6 +568,72 @@ function renderDoc(
   processAdmonitions(body);
   addCopyButtons(body);
   void renderMermaidBlocks();
+
+  // 差分ハイライト: レンダリング後に非同期で取得して適用
+  if (currentRoot) {
+    void applyDiffHighlight(path, currentRoot.path, body);
+  }
+}
+
+// ─── 差分ハイライト ───
+const diffCache = new Map<string, DiffInfo | null>();
+
+async function applyDiffHighlight(path: string, root: string, body: HTMLElement): Promise<void> {
+  try {
+    let diff: DiffInfo | null;
+    if (diffCache.has(path)) {
+      diff = diffCache.get(path)!;
+    } else {
+      diff = (await invoke('get_diff', { path, root })) as DiffInfo | null;
+      diffCache.set(path, diff);
+    }
+    if (!diff) return;
+    // markdown レンダリング後の DOM にはブロック要素が並ぶ。
+    // 元の markdown の行番号と DOM 要素は 1:1 対応しないため、
+    // ブロック要素に data-source-line を振る代わりに、
+    // 差分がある場合は md-body の先頭にインジケータバーを表示する。
+    const indicator = createEl('div', { class: 'diff-indicator' },
+      createEl('span', { class: 'diff-indicator-dot' }),
+      createEl('span', {}, t('diff.changed', diff.change_count)),
+    );
+    indicator.addEventListener('click', () => {
+      // 既読マーク (スナップショット更新)
+      void invoke('mark_as_read', { path, root });
+      indicator.remove();
+    });
+    body.insertBefore(indicator, body.firstChild);
+  } catch {
+    // diff 取得失敗は無視
+  }
+}
+
+async function loadChangeBadges(root: string): Promise<void> {
+  try {
+    const changed = (await invoke('get_changed_files', { root })) as FileChangeInfo[];
+    // await 中にルートが変わった場合はスキップ
+    if (!changed.length || !currentRoot || currentRoot.path !== root) return;
+    // ツリーの TreeNode に has_changes を付与して再描画
+    const changedMap = new Map(changed.map((c) => [c.path, c.change_count]));
+    markChanges(currentRoot.tree, changedMap);
+    tree.render(currentRoot.tree, currentRoot.path);
+    if (currentFile) tree.setActive(currentFile);
+  } catch {
+    // 無視
+  }
+}
+
+function markChanges(node: TreeNode, changed: Map<string, number>): void {
+  if (!node.is_dir) {
+    const count = changed.get(node.path);
+    node.has_changes = count != null && count > 0;
+    node.change_count = count ?? 0;
+    return;
+  }
+  if (node.children) {
+    for (const child of node.children) {
+      markChanges(child, changed);
+    }
+  }
 }
 
 // ─── ディレクトリ読み込み ───
@@ -575,6 +650,8 @@ async function loadRoot(path: string): Promise<void> {
     tree.render(node, path);
     // 最近開いたディレクトリに追加
     void invoke('add_recent_dir', { path });
+    // 変更バッジを非同期で取得 (ツリー描画をブロックしない)
+    void loadChangeBadges(path);
     try {
       await invoke('start_watch', { path });
     } catch (e) {
@@ -582,6 +659,65 @@ async function loadRoot(path: string): Promise<void> {
     }
   } catch (e) {
     showToast(t('toast.scanFail', String(e)));
+  }
+}
+
+// ─── 変更ファイル一覧パネル ───
+async function showChangedFiles(): Promise<void> {
+  if (!currentRoot) {
+    showToast(t('toast.openDirFirst'));
+    return;
+  }
+  const root = currentRoot.path;
+  try {
+    const changed = (await invoke('get_changed_files', { root })) as FileChangeInfo[];
+    if (!changed.length) {
+      showToast(t('changes.none'));
+      return;
+    }
+    // パレット風オーバーレイで表示
+    const overlay = createEl('div', { class: 'changes-overlay' });
+    const panel = createEl('div', { class: 'changes-panel' });
+    const header = createEl('div', { class: 'changes-header' },
+      createEl('span', {}, t('changes.title', changed.length)),
+      createEl('button', { class: 'btn-ghost', onClick: close }, '×'),
+    );
+    const list = createEl('div', { class: 'changes-list' });
+
+    for (const file of changed) {
+      const rel = root && file.path.startsWith(root)
+        ? file.path.slice(root.length).replace(/^\/+/, '')
+        : file.path;
+      const item = createEl('button', {
+        class: 'changes-item',
+        onClick: () => {
+          close();
+          void openFile(file.path);
+          tree.setActive(file.path);
+        },
+      },
+        createEl('span', { class: 'changes-item-name' }, file.title || file.name),
+        createEl('span', { class: 'changes-item-path' }, rel),
+        createEl('span', { class: 'changes-item-count' }, `+${file.change_count}`),
+      );
+      list.appendChild(item);
+    }
+
+    panel.appendChild(header);
+    panel.appendChild(list);
+    overlay.appendChild(panel);
+    document.body.appendChild(overlay);
+
+    function close() { overlay.remove(); }
+    overlay.addEventListener('click', (ev) => {
+      if (ev.target === overlay) close();
+    });
+    const onKey = (ev: KeyboardEvent) => {
+      if (ev.key === 'Escape') { close(); document.removeEventListener('keydown', onKey); }
+    };
+    document.addEventListener('keydown', onKey);
+  } catch {
+    showToast(t('changes.fail'));
   }
 }
 
@@ -669,6 +805,9 @@ document.getElementById('tbSearch')?.addEventListener('click', () => {
 });
 document.getElementById('tbPalette')?.addEventListener('click', () => {
   palette.open(tree.flatten());
+});
+document.getElementById('tbChanges')?.addEventListener('click', () => {
+  void showChangedFiles();
 });
 
 // ─── フォルダ D&D (Tauri の OS ネイティブ drag-drop イベント) ───
@@ -972,6 +1111,7 @@ void listen('fs-changed', async (ev) => {
   for (const p of paths) {
     cache.delete(p);
     domCache.delete(p);
+    diffCache.delete(p);
   }
   if (currentFile && paths.includes(currentFile)) {
     const scrollTop = docContent.scrollTop;
@@ -1265,6 +1405,7 @@ if (dropText) dropText.textContent = t('drop.text');
 document.getElementById('tbSidebar')?.setAttribute('title', t('tb.sidebar'));
 document.getElementById('tbSearch')?.setAttribute('title', t('tb.search'));
 document.getElementById('tbPalette')?.setAttribute('title', t('tb.palette'));
+document.getElementById('tbChanges')?.setAttribute('title', t('tb.changes'));
 byId('providerBtn').title = t('provider.title');
 byId('themeBtn').title = t('theme.title');
 
