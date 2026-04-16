@@ -27,6 +27,7 @@ pub async fn start_watch(
     }
 
     let app_for_event = app.clone();
+    let path_for_invalidate = path.clone();
     let mut watcher = notify::recommended_watcher(move |res: notify::Result<Event>| {
         let Ok(event) = res else {
             return;
@@ -49,6 +50,8 @@ pub async fn start_watch(
             .map(|p| p.to_string_lossy().into_owned())
             .collect();
         if !changed.is_empty() {
+            // tantivy インデックスをクリアして次回検索時に再構築
+            super::search::invalidate_index(&path_for_invalidate);
             let _ = app_for_event.emit("fs-changed", changed);
         }
     })

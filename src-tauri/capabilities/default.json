@@ -10,6 +10,7 @@
     "window-state:default",
     "dialog:default",
     "core:path:default",
-    "core:event:default"
+    "core:event:default",
+    "updater:default"
   ]
 }

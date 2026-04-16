@@ -540,6 +540,70 @@ code {
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
 }
 
+/* ─── 最近開いたディレクトリ (empty state) ─── */
+.recent-list {
+  list-style: none;
+  padding: 0;
+  margin: 24px 0 0;
+  text-align: left;
+}
+.recent-list li {
+  margin: 0;
+}
+.recent-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 12px;
+  border: none;
+  background: none;
+  color: var(--text-secondary);
+  font-size: 13px;
+  cursor: pointer;
+  border-radius: 5px;
+  text-align: left;
+}
+.recent-item:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+.recent-item-name {
+  font-weight: 500;
+  color: var(--text);
+}
+.recent-item-path {
+  font-size: 11.5px;
+  color: var(--text-faint);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ─── 翻訳ボタン (doc-header) ─── */
+.translate-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 10px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+  font-size: 11.5px;
+  cursor: pointer;
+  margin-left: 8px;
+  white-space: nowrap;
+}
+.translate-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+.translate-btn.loading {
+  opacity: 0.5;
+  pointer-events: none;
+}
+
 /* ─────────── ドロップオーバーレイ ─────────── */
 #dropOverlay {
   position: fixed;

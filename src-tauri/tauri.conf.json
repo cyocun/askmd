@@ -8,7 +8,7 @@
   "app": {
     "withGlobalTauri": true,
     "security": {
-      "csp": "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: blob: asset: http://asset.localhost; connect-src ipc: http://ipc.localhost"
+      "csp": "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: blob: asset: http://asset.localhost; connect-src ipc: http://ipc.localhost https://translate.googleapis.com https://github.com"
     },
     "windows": [
       {
@@ -22,6 +22,14 @@
       }
     ]
   },
+  "plugins": {
+    "updater": {
+      "endpoints": [
+        "https://github.com/cyocun/askmd/releases/latest/download/latest.json"
+      ],
+      "pubkey": ""
+    }
+  },
   "bundle": {
     "active": true,
     "targets": ["dmg", "app"],
@@ -30,6 +38,13 @@
     ],
     "macOS": {
       "minimumSystemVersion": "12.0"
-    }
+    },
+    "fileAssociations": [
+      {
+        "ext": ["md", "markdown", "mdown", "mkd"],
+        "mimeType": "text/markdown",
+        "description": "Markdown Document"
+      }
+    ]
   }
 }

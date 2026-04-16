@@ -50,21 +50,40 @@
 - Tauri コマンドは `src-tauri/src/commands/{domain}.rs` にドメインごとに分割
 - フロントがバンドラレスで Tauri プラグインの JS API を直接 import できないため、プラグインを使う機能は Rust 側でラップした `#[tauri::command]` を追加し、JS からは `invoke('...')` で呼び出す
 
-## MVP スコープ (Phase 1)
+## 実装済み機能
 
-- ディレクトリを開く (ダイアログ + CLI 引数 `askmd ~/myrepo`)
+### Phase 1 (MVP)
+- ディレクトリを開く (ダイアログ + CLI 引数 `askmd ~/myrepo` + フォルダ D&D)
 - `.md` だけのツリー (隠しディレクトリ・空ディレクトリは非表示)
 - レンダリング: markdown-it + highlight.js + DOMPurify
-- キーボード: `↑↓` 移動、`Enter` 開く、`/` 絞り込み、`Cmd+P` クイックスイッチ
+- キーボード: `↑↓` / `j` `k` 移動、`Enter` 開く、`@` 絞り込み、`Cmd+P` クイックスイッチ
 - ファイル変更監視 (`notify` crate)
 - 相対リンクで `.md` 内部遷移、画像は同ディレクトリ基準
 - フロントマター抽出 → 上部ヘッダーUIに (タイトル/日付/タグ)
-- 選択範囲 → `Cmd+L` → `claude -p "..."` → 右ペイン下部に回答描画
+- 選択範囲 → `Cmd+L` → AI ストリーミング回答 → 右ペイン下部に描画
+- ゴミ箱削除 + `Cmd+Z` Undo
+- 見出しアウトライン (→/← でファイル⇔アウトラインモード切替)
 
-## Phase 2 以降
+### Phase 1.5 (拡張)
+- テーマシステム (GitHub Light/Dark, Solarized Light/Dark)
+- Mermaid ダイアグラム + KaTeX 数式レンダリング
+- AI プロバイダ切替 (Claude / Copilot / ChatGPT)
+- LLM なしビューアモード (AI 不在時はプロバイダ非表示)
+- 全文横断検索 (`Cmd+F`、tantivy ベースの高速全文検索)
+- Claude 回答ストリーミング
+- ツリーに frontmatter title 表示
+- IME composing 対応
+- 翻訳機能 (`Cmd+Shift+T`、Google Translate 非公式 API、API キー不要)
+- 最近開いたディレクトリの永続化 (起動画面に最大 5 件表示)
+- `.md` ファイルアソシエーション (Finder からダブルクリックで開く)
+- 自動アップデータ (`tauri-plugin-updater`、起動 5 秒後 + 6 時間周期)
+- GitHub Actions リリースワークフロー (`v*` タグで macOS .dmg ビルド)
 
-- 全文検索 (tantivy)
-- ターミナル連携モード
+## 未実装 / Phase 2 以降
+
+- ターミナル連携モード (`Cmd+Shift+L` → iTerm/Terminal で `claude` 対話)
 - Claude Desktop 連携 (API が来たら)
-- 最近開いたリストの永続化 UI
-- リリース / 自動アップデータ
+- 軽量編集 (`Cmd+E` → CodeMirror 6 ソース編集)
+- 分割表示 (side-by-side 2 ファイル比較)
+- Homebrew Cask (`brew install --cask askmd`)
+- macOS コード署名 / Notarization
