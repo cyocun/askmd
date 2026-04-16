@@ -1,4 +1,5 @@
 import { createEl } from './dom.js';
+import { t } from './i18n.js';
 
 // 複数の Ask パネルを管理する Manager。
 // - open() のたびに新しいパネルを DOM に挿入 (排他しない)
@@ -29,6 +30,7 @@ export interface AskDeps {
   }) => Promise<void>;
   subscribe: (handler: (ev: AskStreamEvent) => void) => () => void;
   getProviderName: () => string;
+  renderMarkdown: (md: string) => string;
 }
 
 export interface AskOpenOptions {
@@ -129,16 +131,38 @@ interface TurnHandle {
   finalize(fallbackText?: string): void;
 }
 
-function createTurn(log: HTMLElement, question: string): TurnHandle {
-  const q = createEl('div', { class: 'ask-q' }, question);
+function createTurn(log: HTMLElement, question: string, deps: AskDeps): TurnHandle {
+  // ユーザーメッセージ (badge + text、同じ grid 構造)
+  const qRow = createEl('div', { class: 'ask-msg' },
+    createEl('span', { class: 'ask-badge' }, 'You'),
+    createEl('span', { class: 'ask-q-text' }, question),
+  );
+
+  // AI 回答 (badge + body、同じ grid 構造)
   const tools = createEl('div', { class: 'ask-tools' });
-  const a = createEl('div', { class: 'ask-a loading' });
-  const turn = createEl('div', { class: 'ask-turn' }, q, tools, a);
+  const aText = createEl('div', { class: 'ask-a' });
+  const aStatus = createEl('div', { class: 'ask-a-status' },
+    createEl('span', { class: 'ask-a-spinner' }),
+    createEl('span', {}, t('ask.thinking')),
+  );
+  const aBody = createEl('div', { class: 'ask-a-body' }, aStatus, tools, aText);
+  const aRow = createEl('div', { class: 'ask-msg' },
+    createEl('span', { class: 'ask-badge ask-badge-ai' }, 'AI'),
+    aBody,
+  );
+
+  const turn = createEl('div', { class: 'ask-turn' }, qRow, aRow);
   log.appendChild(turn);
+
+  // ストリーミング中の生テキストを蓄積
+  let rawText = '';
 
   return {
     addTool(name, input) {
       const summary = summarizeToolCall(name, input);
+      while (aStatus.firstChild) aStatus.removeChild(aStatus.firstChild);
+      aStatus.appendChild(createEl('span', { class: 'ask-a-spinner' }));
+      aStatus.appendChild(createEl('span', {}, t('ask.toolRunning', name)));
       const chip = createEl(
         'span',
         { class: 'ask-tool-chip', title: summary },
@@ -148,20 +172,29 @@ function createTurn(log: HTMLElement, question: string): TurnHandle {
       tools.appendChild(chip);
     },
     appendText(text) {
-      a.classList.remove('loading');
-      a.textContent = (a.textContent || '') + text;
+      aStatus.hidden = true;
+      rawText += text;
+      aText.textContent = rawText;
     },
     hasText() {
-      return (a.textContent || '').length > 0;
+      return rawText.length > 0;
     },
     showError(message) {
-      a.classList.remove('loading');
-      a.classList.add('error');
-      a.textContent = `エラー: ${message}`;
+      aStatus.hidden = true;
+      aText.classList.add('error');
+      aText.textContent = t('ask.error', message);
     },
     finalize(fallbackText) {
-      a.classList.remove('loading');
-      if (fallbackText && !a.textContent) a.textContent = fallbackText;
+      aStatus.hidden = true;
+      const finalText = rawText || fallbackText || '';
+      if (finalText) {
+        // 完了時に markdown をレンダリング
+        const html = deps.renderMarkdown(finalText);
+        const doc = new DOMParser().parseFromString(html, 'text/html');
+        while (aText.firstChild) aText.removeChild(aText.firstChild);
+        aText.classList.add('md-body');
+        while (doc.body.firstChild) aText.appendChild(doc.body.firstChild);
+      }
     },
   };
 }
@@ -202,16 +235,16 @@ function buildPanel(
 ): PanelHandle {
   let sessionId: string | null = null;
 
-  const badge = createEl('span', { class: 'ask-session-badge' }, '会話継続中');
+  const badge = createEl('span', { class: 'ask-session-badge' }, t('ask.continuing'));
   badge.hidden = true;
 
   const closeBtn = createEl(
     'button',
-    { class: 'btn-ghost', title: '閉じる (Esc)' },
+    { class: 'btn-ghost', title: t('ask.close') },
     '×',
   );
 
-  const providerLabel = createEl('span', {}, `${deps.getProviderName()} に質問`);
+  const providerLabel = createEl('span', {}, t('ask.askProvider', deps.getProviderName()));
 
   const header = createEl(
     'div',
@@ -230,7 +263,7 @@ function buildPanel(
   const input = createEl('input', {
     class: 'ask-input',
     type: 'text',
-    placeholder: '何を聞きますか? (Read/Glob/Grep で周辺ファイルも読めます)',
+    placeholder: t('ask.inputPlaceholder'),
     spellcheck: false,
     autocomplete: 'off',
   }) as HTMLInputElement;
@@ -238,7 +271,7 @@ function buildPanel(
   const sendBtn = createEl(
     'button',
     { class: 'btn-primary ask-send' },
-    '送信',
+    t('ask.send'),
   ) as HTMLButtonElement;
 
   const inputRow = createEl('div', { class: 'ask-input-row' }, input, sendBtn);
@@ -262,7 +295,7 @@ function buildPanel(
     const question = input.value.trim();
     if (!question) return;
 
-    const turn = createTurn(log, question);
+    const turn = createTurn(log, question, deps);
     input.value = '';
     input.disabled = true;
     sendBtn.disabled = true;
@@ -304,7 +337,7 @@ function buildPanel(
           finalizeUi();
           break;
         case 'error':
-          turn.showError(ev.message || '不明なエラー');
+          turn.showError(ev.message || t('ask.unknownError'));
           unsubscribe();
           finalizeUi();
           break;
