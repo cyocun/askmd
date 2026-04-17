@@ -38,6 +38,46 @@
 - プロバイダは起動時に `which` で自動検出。複数あればメニューから切替可能。ゼロならビューアモード
 - 将来: ターミナルで開くモード (`osascript` 経由で Terminal/iTerm に `claude` を流す)、Claude Desktop 連携 (現状 deep link でプロンプトプリフィル不可、将来対応)
 
+## 編集モデル (2026-04-17 時点の考え方)
+
+askmd は「読むが主、書くは補助」。書く体験を過剰に作り込むと複雑さが
+指数的に増えるので、**必要最小限の 2 パス**だけに絞る。どちらも
+「ファイル本体は Markdown のまま、装飾は decoration のみ」を絶対条件にして
+ラウンドトリップ事故ゼロを維持する。
+
+### パス 1: 全体ソース編集 (`⌘E`)
+- `reading ↔ source` の 2 段トグル。ファイル全体を CM6 で開く
+- CM6 の `HighlightStyle` で「記号は見えたまま、見出し/強調/斜体/取消線/リンク/インラインコードが装飾される」= Obsidian の Source Mode 相当
+- `ViewPlugin` の line decoration でコードブロック背景・blockquote 左 border・table 背景
+- Table 内は Tab/Shift-Tab でセル移動、最終セル Tab で新行追加、table 内 Enter で直後に空行を挿入 (Advanced Tables 風)
+- 保存は `⌘S`。fs-changed で読むモードが自動再描画
+
+### パス 2: 選択範囲だけの mini editor (選択フロートバー → 鉛筆「編集」)
+- 本文を選択 → 選択フロートバーの **鉛筆アイコン** → 小さな CM6 popover が浮かぶ
+- 選択プレーンテキストを Markdown body の中で `indexOf` 検索 → 見つかった offset range だけを mini editor に投入
+- 検索で見つからない (記法をまたぐ選択 = DOM selection.toString() が body 原文と不一致) 時は、**anchor block (`data-lines` 持ち) 全体にフォールバック**して block 丸ごと編集可能にする
+- `⌘S` で body の該当 offset を置換、frontmatter は split/restore で常に保持
+
+### WYSIWYG を入れない理由
+一度 Ixora (Typora 流 = カーソル行だけ記号が見える) と、テーブル用の block widget を実装したが却下:
+- Typora 流のパタパタ切替が実運用で気が散る
+- テーブル widget は「カーソルが入ると切り替わる」挙動が破綻的に突然で UX を損なう
+- `==mark==` / admonition / Mermaid / KaTeX 等の装飾は Ixora では扱えず、自作の検証コストが大きい
+
+Milkdown / TipTap / 素の contenteditable も検討したが同じ理由で採用せず:
+- ProseMirror 系 (Milkdown/TipTap) は `==mark==` / admonition の自前プラグイン + テーマ整合コスト
+- 素の contenteditable は WebKit の IME / Enter / paste 挙動の地雷が大きく、日本語話者の入力体験を壊すリスク
+
+「記号は見えたままで装飾がリッチ」を CM6 標準機能だけで組み上げるのが、
+実装量・round-trip 安全性・複雑度のバランスで最良と判断した。
+
+### 「table 編集が辛い」など不便が出た時の打ち手
+段階的に拡張する方針。先回りしない:
+1. まずは数週間使って実際のストレスを計測する
+2. 足りなければ **読むモードの table に contenteditable を差し込む** (地雷面積が table 内だけに限定される最小介入)
+3. それでも足りなければ **Milkdown を再検討**。`==mark==` / admonition の自前プラグインを書く覚悟ができてから全面移行を検討
+4. `app.ts` の過剰分割・新フレーム導入など複雑化の方向には原則行かない
+
 ## コード規約
 
 - フロントエンドは **Vite** でバンドル。TypeScript ソースは `frontend/ts/`、CSS は `frontend/styles/`
