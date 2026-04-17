@@ -1,0 +1,52 @@
+/* ソースモードの編集 (CodeMirror 6) のスタイル。
+   HighlightStyle が inline tag (heading / strong / emphasis / link 等) を担当し、
+   こちらは block 単位の装飾 (codeblock / blockquote / table の背景・border) を担う。
+   記号は隠さない = round-trip は絶対安全。 */
+
+/* ─ 共通: CM editor コンテナ ─ */
+.editor-container .cm-editor {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+}
+.editor-container .cm-scroller {
+  line-height: 1.7;
+}
+/* 本文と同じ読み心地にするため content 幅を制限 */
+.editor-container .cm-content {
+  max-width: 780px;
+  margin: 0 auto;
+  padding: 16px 0 120px !important;
+}
+
+/* ─ コードブロック行 (Decoration.line で .cm-md-codeblock が付く) ─ */
+.editor-container .cm-md-codeblock {
+  background: var(--bg-code);
+  border-left: 3px solid var(--border);
+}
+
+/* ─ Blockquote 行 ─ */
+.editor-container .cm-md-quote {
+  border-left: 3px solid var(--quote-border);
+  padding-left: 8px !important;
+  color: var(--text-secondary);
+}
+
+/* ─ Table 行 (パイプを揃えやすいよう monospace、背景は控えめに) ─ */
+.editor-container .cm-md-table {
+  background: var(--bg-hover);
+}
+
+/* ─ インラインコード (HighlightStyle の monospace tag に対応) ─
+   HighlightStyle では font 系のみ指定し、背景は class 不使用なので
+   CM6 のスパンに直接効かせる手が無い。許容: 背景なしでも monospace で十分見分けが付く。
+   もし背景が欲しければ monospace の span を tokenOverlay で包む拡張が必要。 */
+
+/* ─ アクティブ行 (編集中の行の視認性) ─ */
+.editor-container .cm-line.cm-activeLine {
+  border-radius: 3px;
+}
+
+/* ─ Selection の見た目 (ライトテーマ) ─ */
+.editor-container.cm-focused .cm-selectionBackground,
+.editor-container .cm-selectionBackground {
+  background: var(--accent-soft);
+}

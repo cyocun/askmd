@@ -354,10 +354,8 @@ function buildFmHeader(
     class: 'doc-action-btn',
     title: t('header.edit'),
     dataset: { role: 'edit' },
-    onClick: () => {
-      editMode.toggle();
-    },
-  }, t('edit.btn')));
+    onClick: () => editMode.toggle(),
+  }, t('edit.mode.reading')));
   // 差分バッジ (非同期で取得後に表示)
   const diffBadge = createEl('button', {
     class: 'doc-action-btn doc-diff-badge',
@@ -714,13 +712,26 @@ async function pickAndLoad(): Promise<void> {
   if (picked) await loadRoot(picked);
 }
 
-// ─── 簡易編集 (Cmd+E) ───
+// ─── 簡易編集 (Cmd+E): 読む ↔ ソース の 2 段トグル ───
+const EDIT_MODE_LABELS = {
+  reading: () => t('edit.mode.reading'),
+  source:  () => t('edit.mode.source'),
+};
+
+function updateEditButton(mode: 'reading' | 'source'): void {
+  const btn = docHeader.querySelector('[data-role="edit"]') as HTMLButtonElement | null;
+  if (!btn) return;
+  btn.textContent = EDIT_MODE_LABELS[mode]();
+  btn.classList.toggle('active', mode === 'source');
+}
+
 const editMode = createEditMode({
   docContent,
   saveDomSnapshot: () => saveDomSnapshot(),
   restoreDomSnapshot: (path) => restoreDomSnapshot(path),
   reopenFile: (path) => openFile(path),
   updateFileAskBtn: () => askBridge.updateFileAskBtn(),
+  onModeChange: (mode) => updateEditButton(mode),
 });
 
 // ─── イベント配線 ───

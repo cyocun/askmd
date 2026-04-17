@@ -1,11 +1,18 @@
-// 簡易編集機能 — Cmd+E でレンダリング表示と CodeMirror 6 ソース編集をトグル
+// 編集モード (CodeMirror 6) の本体。
+// 「ソース編集」を一段リッチにするために、標準の Markdown syntax highlight に加えて
+// 自前の HighlightStyle (見出し大きく・インラインコード背景・リンク色 等) と
+// 行単位の装飾 (コードブロック・blockquote の背景/左 border) を乗せる。
+// ファイル本体は生の Markdown のまま。装飾は全て decoration で、ラウンドトリップ事故ゼロ。
 import { EditorView, keymap, lineNumbers, highlightActiveLine, drawSelection } from '@codemirror/view';
 import { EditorState } from '@codemirror/state';
 import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands';
 import { markdown } from '@codemirror/lang-markdown';
 import { languages } from '@codemirror/language-data';
-import { syntaxHighlighting, defaultHighlightStyle, bracketMatching } from '@codemirror/language';
+import { syntaxHighlighting, bracketMatching } from '@codemirror/language';
 import { oneDark } from '@codemirror/theme-one-dark';
+import { GFM } from '@lezer/markdown';
+import { mdHighlightStyle, mdBlockDecorations } from './editor-md-decoration';
+import { tableNavKeymap } from './editor-table-nav';
 
 // CSS variables ベースのライトテーマ
 const lightTheme = EditorView.theme({
@@ -15,7 +22,7 @@ const lightTheme = EditorView.theme({
   },
   '.cm-content': {
     caretColor: 'var(--accent)',
-    lineHeight: '1.6',
+    lineHeight: '1.7',
   },
   '.cm-cursor': {
     borderLeftColor: 'var(--accent)',
@@ -60,8 +67,11 @@ export function createEditor(container: HTMLElement, opts: EditorOptions): Edito
       drawSelection(),
       bracketMatching(),
       history(),
-      markdown({ codeLanguages: languages }),
-      syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
+      // GFM (Table / TaskList / Strikethrough / Autolink) を有効化
+      markdown({ codeLanguages: languages, extensions: GFM }),
+      // 自前の inline スタイル (見出し等) + 行装飾 (codeblock/blockquote)
+      syntaxHighlighting(mdHighlightStyle, { fallback: true }),
+      mdBlockDecorations,
       themeExtension,
       keymap.of([
         // Cmd+S → 保存
@@ -80,6 +90,9 @@ export function createEditor(container: HTMLElement, opts: EditorOptions): Edito
             return true;
           },
         },
+        // Table 内での Tab / Shift-Tab / Enter (Advanced Tables 風)。
+        // Table 外では false を返して defaultKeymap (indentWithTab 等) にフォールバック。
+        ...tableNavKeymap,
         indentWithTab,
         ...defaultKeymap,
         ...historyKeymap,

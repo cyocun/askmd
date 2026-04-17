@@ -107,17 +107,33 @@
 - 画像 D&D (編集モード) — `tauri://drag-drop` から画像拡張子だけを振り分け、`import_asset` で同フォルダにコピー + `editor.insertAtCursor` で Markdown 挿入
 - ツリー内 md ドラッグ移動 — ファイル行を `draggable`、ディレクトリ行がドロップ先。`move_file` コマンドで `fs::rename`
 - 新コマンド: `rename_file` / `duplicate_file` / `move_file` / `create_new_markdown` / `import_asset` / `get_recent_files`
+- 編集モードを「リッチソース」に (`⌘E` で reading ↔ source の 2 段) — CM6 の `HighlightStyle` で見出し/強調/斜体/取消線/リンク/インラインコードを装飾、`ViewPlugin` で行単位装飾 (`cm-md-codeblock` 背景・`cm-md-quote` 左 border・`cm-md-table` 薄背景)。記号は隠さない方針なので round-trip 事故ゼロ
+- 編集モード: Table 内の Tab/Shift-Tab/Enter ナビ (Advanced Tables 風、`editor-table-nav.ts`) — セル間移動、最終セル Tab で行追加、table 内 Enter で直下に空行
 
 ## Phase 3 残 / Phase 4 候補
 
 ### 未着手 (意図的に後回し)
 - **初回起動オンボーディング** (3 画面: フォルダ選択 / AI は任意 / 主要操作チートシート)
-- **WYSIWYG 風編集** (CodeMirror 6 + rich-markdoc or Ixora で読む/書く/ソースの 3 段トグル)
-  - ファイル本体は Markdown のまま — ラウンドトリップ事故ゼロが設計条件
-  - rich-markdoc と Ixora の実機比較プロトタイプから始める想定
 - **外部 (Finder/Slack) へのドラッグ書き出し** (Tauri のネイティブ drag-out サポート状況要調査)
 - 「未読」入口 (既読管理のためのメタデータが別途必要)
 - Ask 継続会話の「ここまでを送る」操作 (現状は Claude CLI の sessionId 任せ)
+
+### 編集モードの方針決定 (WYSIWYG は採用しない)
+一度 Ixora ベースの WYSIWYG (記号を隠す Typora 流) を実装したが却下した。理由:
+- 「読む主体、書くは補助」の基本方針に照らすと、書く側に凝るほど複雑度が跳ね上がる
+- Typora 流の「カーソル行だけ記号が見える」挙動はパタパタして実際の編集で気が散る
+- table / Mermaid / KaTeX / admonition / `==mark==` の装飾は Ixora では扱えず、自作する場合は round-trip 事故の検証コストが大きい
+
+Milkdown / TipTap / 素の contenteditable も検討したが同じ理由で不採用:
+- ProseMirror 系は admonition / `==mark==` の自前プラグインが必要 + UI 整合コスト
+- 素の contenteditable は WebKit の IME / Enter / paste 挙動の地雷が大きく、非エンジニアの日本語入力体験を壊すリスク
+
+採用した線は **CM6 + HighlightStyle + 行装飾 + Table ナビ**。「記号は見えたままでスタイルがリッチに乗る」= Obsidian の Source Mode 相当。round-trip は数学的に保証 (テキストを触らない)。table の `|` 区切りは「読むに戻って確認 → ソースで編集」のサイクルで許容する。
+
+次に「table 編集が辛い」「読むモードからちょい直したい」となった時の段階的な打ち手 (2026-04-17 時点で未着手の検討メモ):
+1. **選択範囲インライン編集**: 読むモードで任意のブロックを選択 → 「編集」ボタン → その block だけ contenteditable or CM6 mini editor を開く → 保存で元 md の `data-lines` 範囲を書き換え。既存の `data-lines` 属性がそのまま活用できる。block ごとの HTML→Markdown 変換が要る (Turndown + 自前ルール or block 種別ごとの逆変換)
+2. **読むモードの table だけ contenteditable**: 地雷面積を table 内に限定 (1 より簡易、ただし table 以外はソース編集に戻る)
+3. 上記で足りない場合のみ **Milkdown 再検討**。table 1 箇所のために全面移行はコスト過大なので、admonition / `==mark==` 自前プラグインの実装コストを払う覚悟ができてから
 
 ### 後回し / 検討中
 - macOS コード署名 / Notarization

@@ -72,7 +72,9 @@ const translations: Record<string, Record<Lang, string>> = {
   'edit.btn': { ja: '編集', en: 'Edit' },
   'edit.save': { ja: '保存', en: 'Save' },
   'edit.cancel': { ja: 'キャンセル', en: 'Cancel' },
-  'header.edit': { ja: '編集 (⌘E)', en: 'Edit (⌘E)' },
+  'header.edit': { ja: '編集 / 読む を切替 (⌘E)', en: 'Toggle Edit / Read (⌘E)' },
+  'edit.mode.reading': { ja: '編集', en: 'Edit' },
+  'edit.mode.source':  { ja: '編集中', en: 'Editing' },
   // ─ Toolbar ─
   'tb.changes': { ja: '変更のあるファイル', en: 'Files with changes' },
   'toast.switched': { ja: '{0} に切り替えました', en: 'Switched to {0}' },

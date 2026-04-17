@@ -79,6 +79,12 @@
   opacity: 0.5;
   pointer-events: none;
 }
+.doc-action-btn.active {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--accent);
+  font-weight: 600;
+}
 .doc-meta {
   display: flex;
   gap: 6px;
