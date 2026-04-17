@@ -40,41 +40,29 @@
 
 ## 編集モデル (2026-04-17 時点の考え方)
 
-askmd は「読むが主、書くは補助」。書く体験を過剰に作り込むと複雑さが
-指数的に増えるので、**必要最小限の 2 パス**だけに絞る。どちらも
-「ファイル本体は Markdown のまま、装飾は decoration のみ」を絶対条件にして
-ラウンドトリップ事故ゼロを維持する。
+askmd は「読むが主、書くは補助」。新規作成も画像差し込みも意図的にやらない — **既存 md の文字を選択単位でちょい直しする、それだけ**に絞る。ファイル本体は Markdown のまま、装飾は decoration のみ、という絶対条件でラウンドトリップ事故ゼロを維持する。
 
-### パス 1: 全体ソース編集 (`⌘E`)
-- `reading ↔ source` の 2 段トグル。ファイル全体を CM6 で開く
-- CM6 の `HighlightStyle` で「記号は見えたまま、見出し/強調/斜体/取消線/リンク/インラインコードが装飾される」= Obsidian の Source Mode 相当
-- `ViewPlugin` の line decoration でコードブロック背景・blockquote 左 border・table 背景
-- Table 内は Tab/Shift-Tab でセル移動、最終セル Tab で新行追加、table 内 Enter で直後に空行を挿入 (Advanced Tables 風)
-- 保存は `⌘S`。fs-changed で読むモードが自動再描画
-
-### パス 2: 選択範囲だけの mini editor (選択フロートバー → 鉛筆「編集」)
-- 本文を選択 → 選択フロートバーの **鉛筆アイコン** → 小さな CM6 popover が浮かぶ
+### 選択範囲だけの mini editor (選択フロートバー → 鉛筆 / `⌘E`)
+- 本文を選択 → 選択フロートバーの **鉛筆アイコン** or `⌘E` → 小さな CM6 popover が浮かぶ
 - 選択プレーンテキストを Markdown body の中で `indexOf` 検索 → 見つかった offset range だけを mini editor に投入
 - 検索で見つからない (記法をまたぐ選択 = DOM selection.toString() が body 原文と不一致) 時は、**anchor block (`data-lines` 持ち) 全体にフォールバック**して block 丸ごと編集可能にする
 - `⌘S` で body の該当 offset を置換、frontmatter は split/restore で常に保持
+- 選択なしで `⌘E` を押しても何も起きない (無反応)
 
-### WYSIWYG を入れない理由
-一度 Ixora (Typora 流 = カーソル行だけ記号が見える) と、テーブル用の block widget を実装したが却下:
-- Typora 流のパタパタ切替が実運用で気が散る
-- テーブル widget は「カーソルが入ると切り替わる」挙動が破綻的に突然で UX を損なう
-- `==mark==` / admonition / Mermaid / KaTeX 等の装飾は Ixora では扱えず、自作の検証コストが大きい
+### ソース全体編集モードも WYSIWYG も入れない理由
+一度 Ixora ベースの WYSIWYG (Typora 流) + テーブル block widget、そして CM6 + HighlightStyle でのソース全体編集モード (`⌘E` で reading ↔ source トグル) を実装したが、いずれも却下した:
 
-Milkdown / TipTap / 素の contenteditable も検討したが同じ理由で採用せず:
-- ProseMirror 系 (Milkdown/TipTap) は `==mark==` / admonition の自前プラグイン + テーマ整合コスト
-- 素の contenteditable は WebKit の IME / Enter / paste 挙動の地雷が大きく、日本語話者の入力体験を壊すリスク
+- **ソース全体編集 (旧 `⌘E`)**: 「ファイル全体を書き換えたい」ニーズは askmd で満たすべきではない。構造変更や大幅書き換えは VS Code 等の外部エディタに委ねる。全体編集モードを残すと「書くツール」としての期待値が生まれ、複雑度が連鎖的に膨らむ。`create_new_markdown` は自分用の抜け道として右クリック奥に残すが、主流の UI には出さない
+- **Ixora (Typora 流)**: カーソル行で記号がパタパタ切替わるのが気が散る。table / Mermaid / KaTeX / admonition / `==mark==` の装飾を自作するコストも大きい
+- **Milkdown / TipTap**: ProseMirror 系は `==mark==` / admonition の自前プラグインが必要 + UI 整合コスト
+- **素の contenteditable**: WebKit の IME / Enter / paste 挙動の地雷で日本語入力を壊すリスク
 
-「記号は見えたままで装飾がリッチ」を CM6 標準機能だけで組み上げるのが、
-実装量・round-trip 安全性・複雑度のバランスで最良と判断した。
+採用したのは **選択 → mini editor の一点のみ**。round-trip は数学的に保証 (触るのは選択 offset 範囲だけ)。ファイル全体の書き換えが必要になったら外部エディタで開けば済む。
 
-### 「table 編集が辛い」など不便が出た時の打ち手
+### 「不便が出た時」の打ち手
 段階的に拡張する方針。先回りしない:
 1. まずは数週間使って実際のストレスを計測する
-2. 足りなければ **読むモードの table に contenteditable を差し込む** (地雷面積が table 内だけに限定される最小介入)
+2. 読むモードの table 編集が辛いなら、**table だけ contenteditable を差し込む** (地雷面積が table 内に限定される最小介入)
 3. それでも足りなければ **Milkdown を再検討**。`==mark==` / admonition の自前プラグインを書く覚悟ができてから全面移行を検討
 4. `app.ts` の過剰分割・新フレーム導入など複雑化の方向には原則行かない
 
@@ -131,7 +119,6 @@ Milkdown / TipTap / 素の contenteditable も検討したが同じ理由で採�
 - コードブロックのコピーボタン (ホバーで Copy ボタン表示)
 - 読書位置の記憶 (localStorage に永続化、ファイル再オープン時に復元)
 - AI にファイル全体をコンテキスト (選択なし Cmd+L でファイル全体について質問可能)
-- 簡易編集 (`Cmd+E` でレンダリング ↔ CodeMirror 6 ソース編集トグル、`Cmd+S` 保存、`Escape` キャンセル)
 - 変更差分ハイライト (git ベース、直近コミットからの変更行を文字単位で強調・インライン表示・削除行表示、ツリーの変更ファイルバッジ)
 
 ### Phase 3 (非エンジニア対応 + 回遊性 + 軽い編集支援)
@@ -144,11 +131,9 @@ Milkdown / TipTap / 素の contenteditable も検討したが同じ理由で採�
 - 名前変更用の自前プロンプトモーダル (`prompt-modal.ts`)、拡張子を残して stem だけ選択
 - Quick Look 風プレビュー (Space) — ツリー選択中のファイルをオーバーレイで軽量レンダ、Space/Esc/外側クリックで閉じる
 - 最近更新 (`tbRecent`) — Rust 側 `get_recent_files` が mtime 降順で返す。パレット風オーバーレイで相対時刻表示
-- 画像 D&D (編集モード) — `tauri://drag-drop` から画像拡張子だけを振り分け、`import_asset` で同フォルダにコピー + `editor.insertAtCursor` で Markdown 挿入
 - ツリー内 md ドラッグ移動 — ファイル行を `draggable`、ディレクトリ行がドロップ先。`move_file` コマンドで `fs::rename`
-- 新コマンド: `rename_file` / `duplicate_file` / `move_file` / `create_new_markdown` / `import_asset` / `get_recent_files`
-- 編集モードを「リッチソース」に (`⌘E` で reading ↔ source の 2 段) — CM6 の `HighlightStyle` で見出し/強調/斜体/取消線/リンク/インラインコードを装飾、`ViewPlugin` で行単位装飾 (`cm-md-codeblock` 背景・`cm-md-quote` 左 border・`cm-md-table` 薄背景)。記号は隠さない方針なので round-trip 事故ゼロ
-- 編集モード: Table 内の Tab/Shift-Tab/Enter ナビ (Advanced Tables 風、`editor-table-nav.ts`) — セル間移動、最終セル Tab で行追加、table 内 Enter で直下に空行
+- 新コマンド: `rename_file` / `duplicate_file` / `move_file` / `create_new_markdown` / `get_recent_files`
+- 選択範囲 mini editor (選択フロートバー → 鉛筆 / `⌘E`) — 本文選択 → 小さな CM6 popover で該当 offset を編集。記法またぎは anchor block にフォールバック (`data-lines` 利用)。`⌘S` で保存、選択なし `⌘E` は無反応。ファイル全体は触らないので round-trip 事故ゼロ
 
 ## Phase 3 残 / Phase 4 候補
 
@@ -157,23 +142,6 @@ Milkdown / TipTap / 素の contenteditable も検討したが同じ理由で採�
 - **外部 (Finder/Slack) へのドラッグ書き出し** (Tauri のネイティブ drag-out サポート状況要調査)
 - 「未読」入口 (既読管理のためのメタデータが別途必要)
 - Ask 継続会話の「ここまでを送る」操作 (現状は Claude CLI の sessionId 任せ)
-
-### 編集モードの方針決定 (WYSIWYG は採用しない)
-一度 Ixora ベースの WYSIWYG (記号を隠す Typora 流) を実装したが却下した。理由:
-- 「読む主体、書くは補助」の基本方針に照らすと、書く側に凝るほど複雑度が跳ね上がる
-- Typora 流の「カーソル行だけ記号が見える」挙動はパタパタして実際の編集で気が散る
-- table / Mermaid / KaTeX / admonition / `==mark==` の装飾は Ixora では扱えず、自作する場合は round-trip 事故の検証コストが大きい
-
-Milkdown / TipTap / 素の contenteditable も検討したが同じ理由で不採用:
-- ProseMirror 系は admonition / `==mark==` の自前プラグインが必要 + UI 整合コスト
-- 素の contenteditable は WebKit の IME / Enter / paste 挙動の地雷が大きく、非エンジニアの日本語入力体験を壊すリスク
-
-採用した線は **CM6 + HighlightStyle + 行装飾 + Table ナビ**。「記号は見えたままでスタイルがリッチに乗る」= Obsidian の Source Mode 相当。round-trip は数学的に保証 (テキストを触らない)。table の `|` 区切りは「読むに戻って確認 → ソースで編集」のサイクルで許容する。
-
-次に「table 編集が辛い」「読むモードからちょい直したい」となった時の段階的な打ち手 (2026-04-17 時点で未着手の検討メモ):
-1. **選択範囲インライン編集**: 読むモードで任意のブロックを選択 → 「編集」ボタン → その block だけ contenteditable or CM6 mini editor を開く → 保存で元 md の `data-lines` 範囲を書き換え。既存の `data-lines` 属性がそのまま活用できる。block ごとの HTML→Markdown 変換が要る (Turndown + 自前ルール or block 種別ごとの逆変換)
-2. **読むモードの table だけ contenteditable**: 地雷面積を table 内に限定 (1 より簡易、ただし table 以外はソース編集に戻る)
-3. 上記で足りない場合のみ **Milkdown 再検討**。table 1 箇所のために全面移行はコスト過大なので、admonition / `==mark==` 自前プラグインの実装コストを払う覚悟ができてから
 
 ### 後回し / 検討中
 - macOS コード署名 / Notarization

@@ -40,7 +40,6 @@ fn main() {
             commands::directory::duplicate_file,
             commands::directory::move_file,
             commands::directory::create_new_markdown,
-            commands::directory::import_asset,
             commands::markdown::read_markdown,
             commands::ai::ask_ai_stream,
             commands::ai::get_ai_providers,

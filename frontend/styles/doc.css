@@ -111,22 +111,6 @@
   line-height: 1.7;
   position: relative;
 }
-/* 編集モード: padding を消して CodeMirror をフル幅に */
-#docContent[data-editing] {
-  padding: 0;
-  overflow: hidden;
-}
-.editor-container {
-  height: 100%;
-  overflow: hidden;
-}
-.editor-container .cm-editor {
-  height: 100%;
-}
-.editor-container .cm-scroller {
-  overflow: auto;
-  padding: 0 16px;
-}
 
 #emptyState {
   max-width: 520px;

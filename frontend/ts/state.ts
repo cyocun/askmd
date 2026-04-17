@@ -2,7 +2,6 @@
 // - app.ts がブートストラップだけを担うように、
 //   機能別モジュール (file-ops, quick-look, ask-bridge 等) からも参照できる。
 // - セッターではなく state.xxx への直接代入で使う (薄く速く)。
-import type { EditorHandle } from './editor';
 import type { DiffInfo, TreeNode } from './types';
 
 export interface DocCacheEntry {
@@ -26,7 +25,6 @@ export interface DeleteUndoItem {
 export interface AppState {
   currentRoot: { path: string; tree: TreeNode } | null;
   currentFile: string | null;
-  activeEditor: EditorHandle | null;
   aiAvailable: boolean;
   activeProviderName: string;
   /** 別ファイル切替時の読み直しを避けるためのレンダリング結果キャッシュ */
@@ -42,7 +40,6 @@ export interface AppState {
 export const state: AppState = {
   currentRoot: null,
   currentFile: null,
-  activeEditor: null,
   aiAvailable: false,
   activeProviderName: 'Claude',
   cache: new Map(),

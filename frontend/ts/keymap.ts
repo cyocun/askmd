@@ -1,17 +1,18 @@
 // アプリ全体のグローバルキーボードハンドラ。
 // どのキーが何を呼ぶかだけをここで俯瞰できるように、各アクションの実体は
-// deps 経由で受け取る。編集モード中は一部ショートカットを握り潰す。
+// deps 経由で受け取る。
 import { closeQuickLook, isQuickLookOpen, quickLookFor } from './quick-look';
 import { showToast } from './toast';
 import { state } from './state';
 import { t } from './i18n';
+import { anchorBlockOf } from './ask-bridge';
+import { openRangeEditor } from './block-editor';
 import type { Ask } from './ask';
 import type { AskBridge } from './ask-bridge';
 import type { Palette } from './palette';
 import type { Search } from './search';
 import type { TreeView } from './tree';
 import type { FileOps } from './file-ops';
-import type { EditMode } from './edit-mode';
 
 export interface KeymapDeps {
   ask: Ask;
@@ -20,7 +21,6 @@ export interface KeymapDeps {
   search: Search;
   tree: TreeView;
   fileOps: FileOps;
-  editMode: EditMode;
   filterInput: HTMLInputElement;
   leftPane: HTMLElement;
   treeContainer: HTMLElement;
@@ -50,13 +50,16 @@ export function installGlobalKeymap(deps: KeymapDeps): void {
       deps.toggleSidebar();
       return;
     }
+    // 選択 → 鉛筆ボタン と同じ流れ。選択が無い時は無反応。
     if (meta && ev.key.toLowerCase() === 'e') {
       ev.preventDefault();
-      deps.editMode.toggle();
+      const sel = window.getSelection();
+      const text = sel?.toString() || '';
+      if (!text.trim() || !sel || sel.rangeCount === 0 || !state.currentFile) return;
+      const anchor = anchorBlockOf(sel.getRangeAt(0));
+      void openRangeEditor(state.currentFile, text, anchor);
       return;
     }
-    // 編集モード中は他のグローバルショートカットを無効化 (Cmd+S, Escape は editor.ts 内で処理)
-    if (state.activeEditor) return;
 
     if (meta && ev.key.toLowerCase() === 'o') {
       ev.preventDefault();

@@ -175,7 +175,7 @@ export function createAskBridge(deps: AskBridgeDeps): AskBridge {
 
   function updateFileAskBtn(): void {
     const sel = window.getSelection()?.toString().trim() || '';
-    const show = state.aiAvailable && !!state.currentFile && !sel && !state.activeEditor;
+    const show = state.aiAvailable && !!state.currentFile && !sel;
     fileAskBtn.hidden = !show;
   }
 

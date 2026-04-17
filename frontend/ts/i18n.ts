@@ -56,8 +56,6 @@ const translations: Record<string, Record<Lang, string>> = {
   'toast.moveFail': { ja: '移動できませんでした: {0}', en: 'Couldn\u2019t move: {0}' },
   'toast.renameFail': { ja: '名前を変えられませんでした: {0}', en: 'Couldn\u2019t rename: {0}' },
   'toast.duplicateFail': { ja: '複製できませんでした: {0}', en: 'Couldn\u2019t duplicate: {0}' },
-  'toast.imageInserted': { ja: '画像を挿入しました', en: 'Image inserted' },
-  'toast.imageFail': { ja: '画像を取り込めませんでした: {0}', en: 'Couldn\u2019t import image: {0}' },
   // ─ Diff / Changes ─
   'diff.changed': { ja: '{0} 行変更', en: '{0} lines changed' },
   'diff.clickToView': { ja: 'クリックで差分を見る', en: 'Click to see changes' },
@@ -68,13 +66,6 @@ const translations: Record<string, Record<Lang, string>> = {
   'recent.title': { ja: '最近更新したメモ', en: 'Recently updated' },
   'recent.none': { ja: 'まだ更新されたメモはありません', en: 'No recent updates' },
   'recent.fail': { ja: '最近のメモを調べられませんでした', en: 'Couldn\u2019t load recent notes' },
-  // ─ Edit ─
-  'edit.btn': { ja: '編集', en: 'Edit' },
-  'edit.save': { ja: '保存', en: 'Save' },
-  'edit.cancel': { ja: 'キャンセル', en: 'Cancel' },
-  'header.edit': { ja: '編集 / 読む を切替 (⌘E)', en: 'Toggle Edit / Read (⌘E)' },
-  'edit.mode.reading': { ja: '編集', en: 'Edit' },
-  'edit.mode.source':  { ja: '編集中', en: 'Editing' },
   // ─ Toolbar ─
   'tb.changes': { ja: '変更のあるファイル', en: 'Files with changes' },
   'toast.switched': { ja: '{0} に切り替えました', en: 'Switched to {0}' },

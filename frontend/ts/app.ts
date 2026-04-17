@@ -7,7 +7,6 @@ import { createPalette } from './palette';
 import { createSearch } from './search';
 import type { SearchHit } from './search';
 import { createFileOps } from './file-ops';
-import { createEditMode } from './edit-mode';
 import { installGlobalKeymap } from './keymap';
 import { openListOverlay, relativeFromRoot } from './list-overlay';
 import { createTreeView } from './tree';
@@ -15,7 +14,6 @@ import { addCopyButtons, extractTitle, parseFrontmatter, processAdmonitions, ren
 import { currentTheme, initTheme } from './theme';
 import { initLang, getLang, toggleLang, t } from './i18n';
 import type { DiffInfo, FileChangeInfo, OutlineItem, TreeNode } from './types';
-import { createEditor } from './editor';
 import { state } from './state';
 import { invoke, convertFileSrc } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
@@ -350,12 +348,6 @@ function buildFmHeader(
     dataset: { role: 'translate' },
     onClick: () => void translateCurrentDoc(),
   }, t('translate.btn')));
-  actions.appendChild(createEl('button', {
-    class: 'doc-action-btn',
-    title: t('header.edit'),
-    dataset: { role: 'edit' },
-    onClick: () => editMode.toggle(),
-  }, t('edit.mode.reading')));
   // 差分バッジ (非同期で取得後に表示)
   const diffBadge = createEl('button', {
     class: 'doc-action-btn doc-diff-badge',
@@ -712,28 +704,6 @@ async function pickAndLoad(): Promise<void> {
   if (picked) await loadRoot(picked);
 }
 
-// ─── 簡易編集 (Cmd+E): 読む ↔ ソース の 2 段トグル ───
-const EDIT_MODE_LABELS = {
-  reading: () => t('edit.mode.reading'),
-  source:  () => t('edit.mode.source'),
-};
-
-function updateEditButton(mode: 'reading' | 'source'): void {
-  const btn = docHeader.querySelector('[data-role="edit"]') as HTMLButtonElement | null;
-  if (!btn) return;
-  btn.textContent = EDIT_MODE_LABELS[mode]();
-  btn.classList.toggle('active', mode === 'source');
-}
-
-const editMode = createEditMode({
-  docContent,
-  saveDomSnapshot: () => saveDomSnapshot(),
-  restoreDomSnapshot: (path) => restoreDomSnapshot(path),
-  reopenFile: (path) => openFile(path),
-  updateFileAskBtn: () => askBridge.updateFileAskBtn(),
-  onModeChange: (mode) => updateEditButton(mode),
-});
-
 // ─── イベント配線 ───
 document.getElementById('openBtnLarge')?.addEventListener('click', pickAndLoad);
 
@@ -776,30 +746,7 @@ void listen('tauri://drag-drop', async (ev) => {
   dropOverlay.hidden = true;
   const paths = (ev.payload as { paths?: string[] } | undefined)?.paths;
   if (!paths || paths.length === 0) return;
-
-  // 編集モード中に画像をドロップしたら本文に挿入 (同フォルダにコピー)
-  if (state.activeEditor && state.currentFile) {
-    const imgs = paths.filter((p) => /\.(png|jpe?g|gif|webp|svg|heic|bmp|avif)$/i.test(p));
-    if (imgs.length > 0) {
-      const dir = state.currentFile.substring(0, state.currentFile.lastIndexOf('/'));
-      let inserted = 0;
-      for (const src of imgs) {
-        try {
-          const newPath = (await invoke('import_asset', { src, dstDir: dir })) as string;
-          const name = newPath.split('/').pop() || '';
-          const alt = name.replace(/\.[^.]+$/, '');
-          state.activeEditor.insertAtCursor(`\n![${alt}](${name})\n`);
-          inserted++;
-        } catch (e) {
-          showToast(t('toast.imageFail', String(e)));
-        }
-      }
-      if (inserted > 0) showToast(t('toast.imageInserted'));
-      return;
-    }
-  }
-
-  // 通常: 最初のパスをルートとして開く (ディレクトリを想定)
+  // 最初のパスをルートとして開く (ディレクトリを想定)
   await loadRoot(paths[0]);
 });
 
@@ -829,7 +776,7 @@ filterInput.addEventListener('keydown', (ev) => {
 
 // ─── グローバルキーボード ───
 installGlobalKeymap({
-  ask, askBridge, palette, search, tree, fileOps, editMode,
+  ask, askBridge, palette, search, tree, fileOps,
   filterInput, leftPane, treeContainer, docContent,
   toggleSidebar,
   pickAndLoad,
@@ -1115,9 +1062,6 @@ void listen('menu-action', (ev) => {
     case 'translate': void translateCurrentDoc(); break;
     case 'reveal_finder':
       if (state.currentFile) void invoke('reveal_in_finder', { path: state.currentFile });
-      break;
-    case 'edit_toggle':
-      editMode.toggle();
       break;
   }
 });
