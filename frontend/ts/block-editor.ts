@@ -117,7 +117,17 @@ export async function openRangeEditor(
     if (!Number.isNaN(s) && !Number.isNaN(e)) anchorHint = { startLine: s, endLine: e };
   }
 
-  const range = findRange(body, selectedText, anchorHint);
+  // まず選択プレーンテキストで検索。見つからなければ (= 選択に記法が混ざっていて
+  // レンダ後テキストと body テキストが不一致) anchor block 全体にフォールバックする。
+  let range = findRange(body, selectedText, anchorHint);
+  if (!range && anchorHint) {
+    const from = lineOffset(body, anchorHint.startLine);
+    const toRaw = lineOffset(body, anchorHint.endLine);
+    // endLine は次の行の先頭 (markdown-it map の to は exclusive)。
+    // 末尾の改行を 1 文字分戻して block そのものの終端に揃える。
+    const to = toRaw > from && body[toRaw - 1] === '\n' ? toRaw - 1 : toRaw;
+    range = { from, to };
+  }
   if (!range) {
     showToast(t('block.noRange'));
     return;
