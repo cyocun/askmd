@@ -1,20 +1,22 @@
-import { byId, clear, createEl } from './dom';
+import { byId, clear, createEl, insertSanitizedHtml } from './dom';
+import { showToast } from './toast';
 import { createAsk } from './ask';
-import type { AskContext, AskStreamEvent } from './ask';
+import type { AskStreamEvent } from './ask';
+import { createAskBridge } from './ask-bridge';
 import { createPalette } from './palette';
 import { createSearch } from './search';
 import type { SearchHit } from './search';
-import { createSelectionBar } from './selection-bar';
-import { showContextMenu } from './context-menu';
-import { promptText } from './prompt-modal';
-import { showLoading as tpLoading, showResult as tpResult, showError as tpError } from './translate-popover';
+import { createFileOps } from './file-ops';
+import { createEditMode } from './edit-mode';
+import { installGlobalKeymap } from './keymap';
+import { openListOverlay, relativeFromRoot } from './list-overlay';
 import { createTreeView } from './tree';
 import { addCopyButtons, extractTitle, parseFrontmatter, processAdmonitions, render, renderMermaidBlocks } from './renderer';
 import { currentTheme, initTheme } from './theme';
 import { initLang, getLang, toggleLang, t } from './i18n';
 import type { DiffInfo, FileChangeInfo, OutlineItem, TreeNode } from './types';
 import { createEditor } from './editor';
-import type { EditorHandle } from './editor';
+import { state } from './state';
 import { invoke, convertFileSrc } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import '../styles/app.css';
@@ -34,8 +36,8 @@ interface RecentDir {
 
 // ─── スクロール位置永続化 ───
 function scrollKey(filePath: string): string {
-  const rel = currentRoot && filePath.startsWith(currentRoot.path)
-    ? filePath.slice(currentRoot.path.length)
+  const rel = state.currentRoot && filePath.startsWith(state.currentRoot.path)
+    ? filePath.slice(state.currentRoot.path.length)
     : filePath;
   return `askmd-scroll:${rel}`;
 }
@@ -49,81 +51,16 @@ function loadScrollPos(filePath: string): number | null {
   } catch { return null; }
 }
 
-// ─── 状態 ───
-let currentRoot: { path: string; tree: TreeNode } | null = null;
-let currentFile: string | null = null;
-const cache = new Map<string, { rendered: string; title: string; fmHtml: HTMLElement | null; rawBody: string }>();
-// レンダリング済み DOM をファイルパスごとに保持 (スクロール位置・Ask パネル含む)
-interface DomSnapshot {
-  header: DocumentFragment;
-  body: HTMLElement;        // docContent の中身
-  scrollTop: number;
-}
-const domCache = new Map<string, DomSnapshot>();
-let activeProviderName = 'Claude';
-let aiAvailable = false; // どれか1つでも AI プロバイダーが利用可能か
-let activeEditor: EditorHandle | null = null; // Cmd+E 編集モード
-
+// ─── DOM 参照 ───
 const leftPane = byId('leftPane');
 const treeContainer = byId('treeContainer');
 const rootLabel = byId('rootLabel');
 const docHeader = byId('docHeader');
 const docContent = byId('docContent');
 const filterInput = byId('filterInput') as HTMLInputElement;
-const toast = byId('toast');
 const dropOverlay = byId('dropOverlay');
 const providerBtn = byId('providerBtn') as HTMLButtonElement;
 const providerMenu = byId('providerMenu');
-
-// 選択の始点を含む "最も内側の" md ブロックを anchor として返す。
-// 狙い: リストの途中で質問したら UL 全体の後ではなくその LI の直下に挿入したい。
-// UL/OL 自体は anchor 候補に含めない (LI/P が優先されるように)。
-// endContainer は triple-click や shift 選択で次ブロック先頭に飛ぶため startContainer を基準。
-const INLINE_BLOCK_TAGS = new Set([
-  'P', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6',
-  'LI', 'PRE', 'BLOCKQUOTE', 'TABLE', 'HR',
-]);
-function anchorBlockOf(range: Range): HTMLElement | null {
-  let node: Node | null = range.startContainer;
-  if (node.nodeType !== Node.ELEMENT_NODE) node = node.parentNode;
-  let el = node as HTMLElement | null;
-  while (el) {
-    if (el.classList?.contains('md-body')) return null;
-    if (INLINE_BLOCK_TAGS.has(el.tagName)) return el;
-    el = el.parentElement;
-  }
-  return null;
-}
-
-// 選択 range の各行矩形を .md-body 相対座標の overlay として描画。
-// pre/コードブロック内も含めて「今質問中の引用元」を視覚的に残す用途。
-// 返り値は cleanup (overlay 除去)。
-function highlightRange(range: Range): () => void {
-  let mdBody: HTMLElement | null = null;
-  let n: Node | null = range.startContainer;
-  while (n) {
-    if (n.nodeType === Node.ELEMENT_NODE && (n as HTMLElement).classList?.contains('md-body')) {
-      mdBody = n as HTMLElement;
-      break;
-    }
-    n = n.parentNode;
-  }
-  if (!mdBody) return () => {};
-
-  const bodyRect = mdBody.getBoundingClientRect();
-  const overlays: HTMLElement[] = [];
-  for (const r of Array.from(range.getClientRects())) {
-    if (r.width < 1 || r.height < 1) continue;
-    const el = createEl('div', { class: 'ask-highlight' });
-    el.style.top = `${r.top - bodyRect.top + mdBody.scrollTop}px`;
-    el.style.left = `${r.left - bodyRect.left + mdBody.scrollLeft}px`;
-    el.style.width = `${r.width}px`;
-    el.style.height = `${r.height}px`;
-    mdBody.appendChild(el);
-    overlays.push(el);
-  }
-  return () => overlays.forEach((o) => o.remove());
-}
 
 // 見出しごとに <section> でラップして sticky の入れ替わりを実現する。
 // sticky 要素は親の範囲内でのみ固定されるため、
@@ -147,26 +84,6 @@ function wrapSections(body: HTMLElement): void {
   }
 }
 
-// sanitize 済み HTML を DOMParser 経由で挿入する。
-// markdown-it の生成結果は render() 内で DOMPurify に通してから渡る。
-function insertSanitizedHtml(host: HTMLElement, html: string): void {
-  const doc = new DOMParser().parseFromString(html, 'text/html');
-  while (doc.body.firstChild) {
-    host.appendChild(doc.body.firstChild);
-  }
-}
-
-// ─── トースト ───
-let toastTimer: number | null = null;
-function showToast(msg: string): void {
-  toast.textContent = msg;
-  toast.hidden = false;
-  if (toastTimer) clearTimeout(toastTimer);
-  toastTimer = window.setTimeout(() => {
-    toast.hidden = true;
-  }, 2400);
-}
-
 // ─── Claude CLI ストリーム呼び出し ───
 // 1 つのグローバル listen からすべての panel に配信する
 const askSubscribers = new Set<(ev: AskStreamEvent) => void>();
@@ -184,201 +101,48 @@ const ask = createAsk({
       askSubscribers.delete(h);
     };
   },
-  getProviderName: () => activeProviderName,
+  getProviderName: () => state.activeProviderName,
   renderMarkdown: (md) => render(md),
   postProcessContent: (container) => addCopyButtons(container),
 });
 
-// ─── ツリーのコンテキストメニュー & D&D ハンドラ ───
-function handleTreeContextMenu(node: TreeNode, ev: MouseEvent): void {
-  if (node.is_dir) {
-    showContextMenu(ev.clientX, ev.clientY, [
-      { label: t('ctx.newFile'), onClick: () => void createNewMarkdownIn(node.path) },
-      { separator: true },
-      { label: t('ctx.reveal'), onClick: () => void invoke('reveal_in_finder', { path: node.path }) },
-      { label: t('ctx.copyPath'), onClick: () => void copyToClipboard(node.path) },
-    ]);
-    return;
-  }
-  showContextMenu(ev.clientX, ev.clientY, [
-    { label: t('ctx.open'), onClick: () => void openFile(node.path) },
-    { label: t('ctx.preview'), onClick: () => showQuickLook(node.path) },
-    { separator: true },
-    { label: t('ctx.reveal'), onClick: () => void invoke('reveal_in_finder', { path: node.path }) },
-    { label: t('ctx.copyPath'), onClick: () => void copyToClipboard(node.path) },
-    { label: t('ctx.copyName'), onClick: () => void copyToClipboard(node.name) },
-    { separator: true },
-    { label: t('ctx.duplicate'), onClick: () => void duplicateNode(node.path) },
-    { label: t('ctx.rename'), onClick: () => void renameNode(node.path, node.name) },
-    { separator: true },
-    { label: t('ctx.trash'), danger: true, onClick: () => void deleteMd(node.path) },
-  ]);
-}
+// ─── Ask UI 配線 (選択バー / 右下ボタン / ask ヘルパ) ───
+const askBridge = createAskBridge({ ask, docContent });
 
-async function copyToClipboard(text: string): Promise<void> {
-  try {
-    await navigator.clipboard.writeText(text);
-    showToast(t('toast.copied'));
-  } catch {
-    // noop
-  }
-}
-
-async function duplicateNode(path: string): Promise<void> {
-  try {
-    const newPath = (await invoke('duplicate_file', { path })) as string;
-    showToast(t('toast.duplicated'));
-    await refreshTree();
-    await openFile(newPath);
-  } catch (e) {
-    showToast(t('toast.duplicateFail', String(e)));
-  }
-}
-
-async function renameNode(path: string, currentName: string): Promise<void> {
-  const newName = await promptText({
-    title: t('rename.title'),
-    initialValue: currentName,
-    okLabel: t('rename.ok'),
-    cancelLabel: t('rename.cancel'),
-    validate: (v) => {
-      if (!v) return t('rename.invalid');
-      if (v.includes('/') || v.includes('\\')) return t('rename.invalid');
-      return null;
-    },
-  });
-  if (!newName || newName === currentName) return;
-  try {
-    const newPath = (await invoke('rename_file', { path, newName })) as string;
-    showToast(t('toast.renamed'));
-    // キャッシュと履歴は古いパスのまま残る。ゴミではないので残しておき、新パスを開く
-    await refreshTree();
-    if (currentFile === path) {
-      currentFile = null;
-      cache.delete(path);
-      domCache.delete(path);
-    }
-    await openFile(newPath);
-  } catch (e) {
-    showToast(t('toast.renameFail', String(e)));
-  }
-}
-
-async function createNewMarkdownIn(dir: string): Promise<void> {
-  try {
-    const newPath = (await invoke('create_new_markdown', { dir })) as string;
-    await refreshTree();
-    await openFile(newPath);
-    // 作成直後にリネームを促す (名前をすぐ決めてもらう)
-    const defaultName = newPath.split('/').pop() || 'untitled.md';
-    await renameNode(newPath, defaultName);
-  } catch (e) {
-    showToast(t('toast.saveFail', String(e)));
-  }
-}
-
-async function moveFileTo(src: string, dstDir: string): Promise<void> {
-  // 同じ親ディレクトリへのドロップは no-op
-  const parent = src.substring(0, src.lastIndexOf('/'));
-  if (parent === dstDir) return;
-  try {
-    const newPath = (await invoke('move_file', { src, dstDir })) as string;
-    showToast(t('toast.moved'));
-    cache.delete(src);
-    domCache.delete(src);
-    await refreshTree();
-    if (currentFile === src) {
-      currentFile = null;
-      await openFile(newPath);
-    }
-  } catch (e) {
-    showToast(t('toast.moveFail', String(e)));
-  }
-}
-
-function showQuickLook(path: string): void {
-  void quickLookFor(path);
-}
-
-// ─── Quick Look (Space キーでの軽量プレビュー) ───
-let quickLookOverlay: HTMLElement | null = null;
-function closeQuickLook(): void {
-  if (quickLookOverlay) {
-    quickLookOverlay.remove();
-    quickLookOverlay = null;
-  }
-}
-
-async function quickLookFor(path: string): Promise<void> {
-  // 既に開いているなら閉じて再オープン
-  closeQuickLook();
-  try {
-    const cached = cache.get(path);
-    let rendered: string;
-    let title: string;
-    if (cached) {
-      rendered = cached.rendered;
-      title = cached.title;
-    } else {
-      const result = (await invoke('read_markdown', { path })) as { content: string; modified: number | null };
-      const fm = parseFrontmatter(result.content);
-      const filename = path.split('/').pop() || path;
-      title = extractTitle(fm.body, fm, filename);
-      rendered = render(fm.body);
-    }
-
-    const overlay = createEl('div', { class: 'ql-overlay' });
-    const head = createEl('div', { class: 'ql-head' },
-      createEl('div', { class: 'ql-head-title' }, title),
-      createEl('span', { class: 'ql-head-hint' }, t('ql.hint')),
-    );
-    const body = createEl('div', { class: 'ql-body' });
-    const article = createEl('article', { class: 'md-body' });
-    insertSanitizedHtml(article, rendered);
-    body.appendChild(article);
-    // 画像の相対パス解決
-    const dir = path.substring(0, path.lastIndexOf('/'));
-    article.querySelectorAll('img').forEach((img) => {
-      const src = img.getAttribute('src') || '';
-      if (!src || /^(https?:|data:|blob:|asset:)/.test(src)) return;
-      const absolute = src.startsWith('/') ? src : `${dir}/${src}`;
-      try { img.src = convertFileSrc(absolute, 'asset'); } catch {}
-    });
-    const panel = createEl('div', { class: 'ql-panel' }, head, body);
-    overlay.appendChild(panel);
-
-    overlay.addEventListener('mousedown', (ev) => {
-      if (ev.target === overlay) closeQuickLook();
-    });
-
-    document.body.appendChild(overlay);
-    quickLookOverlay = overlay;
-    void renderMermaidBlocks();
-    addCopyButtons(article);
-  } catch (e) {
-    showToast(t('toast.readFail', String(e)));
-  }
-}
+// ─── ファイル操作 (ツリー右クリック / D&D / 削除 Undo) ───
+const fileOps = createFileOps({
+  openFile: (path) => openFile(path),
+  refreshTree: () => refreshTree(),
+  treeSetActive: (path) => tree.setActive(path),
+  showEmptyState: () => {
+    clear(docHeader);
+    clear(docContent);
+    docContent.appendChild(createEl(
+      'div',
+      { id: 'emptyState' },
+      createEl('h1', {}, 'askmd'),
+      createEl('p', { class: 'empty-sub' }, t('empty.selectFile')),
+    ));
+  },
+  updateFileAskBtn: () => askBridge.updateFileAskBtn(),
+});
 
 // ─── ツリー ───
-// 削除した .md の内容を戻す用の Undo スタック (メモリ上、最大 10)
-const deleteUndoStack: Array<{ path: string; content: string }> = [];
-
 const tree = createTreeView(treeContainer, {
   onOpen: (node) => {
     void openFile(node.path);
   },
   onDelete: (node) => {
-    void deleteMd(node.path);
+    void fileOps.deleteMd(node.path);
   },
   onJumpHeading: (anchorId) => {
     scrollToHeadingId(anchorId);
   },
   onContextMenu: (node, ev) => {
-    handleTreeContextMenu(node, ev);
+    fileOps.handleTreeContextMenu(node, ev);
   },
   onMoveFile: (src, dstDir) => {
-    void moveFileTo(src.path, dstDir.path);
+    void fileOps.moveFileTo(src.path, dstDir.path);
   },
 });
 
@@ -388,62 +152,19 @@ function schedulePreview(): void {
   if (previewTimer) window.clearTimeout(previewTimer);
   previewTimer = window.setTimeout(() => {
     const n = tree.getSelectedNode();
-    if (n && n.path !== currentFile) void openFile(n.path);
+    if (n && n.path !== state.currentFile) void openFile(n.path);
   }, 150);
 }
 
-async function deleteMd(path: string): Promise<void> {
-  try {
-    const content = (await invoke('trash_file', { path })) as string;
-    deleteUndoStack.push({ path, content });
-    if (deleteUndoStack.length > 10) deleteUndoStack.shift();
-    showToast(t('toast.deleted'));
-    if (currentFile === path) {
-      currentFile = null;
-      clear(docHeader);
-      clear(docContent);
-      const emptyEl = createEl(
-        'div',
-        { id: 'emptyState' },
-        createEl('h1', {}, 'askmd'),
-        createEl('p', { class: 'empty-sub' }, t('empty.selectFile')),
-      );
-      docContent.appendChild(emptyEl);
-      updateFileAskBtn();
-    }
-    await refreshTree();
-  } catch (e) {
-    showToast(t('toast.deleteFail', String(e)));
-  }
-}
-
-async function undoDelete(): Promise<void> {
-  const last = deleteUndoStack.pop();
-  if (!last) {
-    showToast(t('toast.noUndo'));
-    return;
-  }
-  try {
-    await invoke('restore_file', { path: last.path, content: last.content });
-    showToast(t('toast.restored'));
-    await refreshTree();
-    // 復元したファイルを開いておく
-    await openFile(last.path);
-  } catch (e) {
-    deleteUndoStack.push(last);
-    showToast(t('toast.restoreFail', String(e)));
-  }
-}
-
 async function refreshTree(): Promise<void> {
-  if (!currentRoot) return;
+  if (!state.currentRoot) return;
   const fresh = (await invoke('scan_markdown_tree', {
-    root: currentRoot.path,
+    root: state.currentRoot.path,
   })) as TreeNode | null;
   if (!fresh) return;
-  currentRoot.tree = fresh;
-  tree.render(fresh, currentRoot.path);
-  if (currentFile) tree.setActive(currentFile);
+  state.currentRoot.tree = fresh;
+  tree.render(fresh, state.currentRoot.path);
+  if (state.currentFile) tree.setActive(state.currentFile);
 }
 
 // 本文 DOM から h1-h3 を抽出、id を付与してアウトライン項目を返す
@@ -500,14 +221,14 @@ interface OpenOptions {
   scrollQuery?: string;
 }
 async function openFile(path: string, options?: OpenOptions): Promise<void> {
-  currentFile = path;
+  state.currentFile = path;
   tree.setActive(path);
 
-  const cached = cache.get(path);
+  const cached = state.cache.get(path);
   if (cached) {
     renderDoc(path, cached.title, cached.rendered, cached.fmHtml);
     if (options?.scrollQuery) scrollToQuery(options.scrollQuery);
-    updateFileAskBtn();
+    askBridge.updateFileAskBtn();
     return;
   }
   try {
@@ -517,10 +238,10 @@ async function openFile(path: string, options?: OpenOptions): Promise<void> {
     const title = extractTitle(fm.body, fm, filename);
     const rendered = render(fm.body);
     const fmHtml = buildFmHeader(fm, title, path, result.modified);
-    cache.set(path, { rendered, title, fmHtml, rawBody: fm.body });
+    state.cache.set(path, { rendered, title, fmHtml, rawBody: fm.body });
     renderDoc(path, title, rendered, fmHtml);
     if (options?.scrollQuery) scrollToQuery(options.scrollQuery);
-    updateFileAskBtn();
+    askBridge.updateFileAskBtn();
   } catch (e) {
     showToast(t('toast.readFail', String(e)));
   }
@@ -564,8 +285,8 @@ function scrollToQuery(query: string): void {
 }
 
 function relativePath(absPath: string): string {
-  if (currentRoot && absPath.startsWith(currentRoot.path)) {
-    return absPath.slice(currentRoot.path.length).replace(/^\/+/, '');
+  if (state.currentRoot && absPath.startsWith(state.currentRoot.path)) {
+    return absPath.slice(state.currentRoot.path.length).replace(/^\/+/, '');
   }
   return absPath;
 }
@@ -634,8 +355,7 @@ function buildFmHeader(
     title: t('header.edit'),
     dataset: { role: 'edit' },
     onClick: () => {
-      if (activeEditor) exitEditMode();
-      else void enterEditMode();
+      editMode.toggle();
     },
   }, t('edit.btn')));
   // 差分バッジ (非同期で取得後に表示)
@@ -645,15 +365,15 @@ function buildFmHeader(
   });
   diffBadge.hidden = true;
   actions.appendChild(diffBadge);
-  if (currentRoot) {
+  if (state.currentRoot) {
     void (async () => {
       try {
         let diff: DiffInfo | null;
-        if (diffCache.has(path)) {
-          diff = diffCache.get(path)!;
+        if (state.diffCache.has(path)) {
+          diff = state.diffCache.get(path)!;
         } else {
-          diff = (await invoke('get_diff', { path, root: currentRoot!.path })) as DiffInfo | null;
-          diffCache.set(path, diff);
+          diff = (await invoke('get_diff', { path, root: state.currentRoot!.path })) as DiffInfo | null;
+          state.diffCache.set(path, diff);
         }
         if (diff && diff.change_count > 0) {
           diffBadge.textContent = t('diff.changed', diff.change_count);
@@ -702,7 +422,7 @@ function saveDomSnapshot(): void {
   while (docContent.firstChild) bodyFrag.appendChild(docContent.firstChild);
   const wrapper = createEl('div');
   wrapper.appendChild(bodyFrag);
-  domCache.set(prevPath, {
+  state.domCache.set(prevPath, {
     header: headerFrag,
     body: wrapper,
     scrollTop: docContent.scrollTop,
@@ -711,9 +431,9 @@ function saveDomSnapshot(): void {
 
 // キャッシュから DOM を復元。成功したら true。
 function restoreDomSnapshot(path: string): boolean {
-  const snap = domCache.get(path);
+  const snap = state.domCache.get(path);
   if (!snap) return false;
-  domCache.delete(path);
+  state.domCache.delete(path);
   clear(docHeader);
   docHeader.appendChild(snap.header);
   docHeader.classList.toggle('empty', docHeader.childElementCount === 0);
@@ -802,8 +522,6 @@ function renderDoc(
 }
 
 // ─── 差分ハイライト ───
-const diffCache = new Map<string, DiffInfo | null>();
-
 function highlightChangedBlocks(body: HTMLElement, diff: DiffInfo): void {
   const changedLines = new Set([...diff.added, ...diff.changed]);
   body.querySelectorAll('[data-lines]').forEach((el) => {
@@ -828,12 +546,12 @@ async function loadChangeBadges(root: string): Promise<void> {
   try {
     const changed = (await invoke('get_changed_files', { root })) as FileChangeInfo[];
     // await 中にルートが変わった場合はスキップ
-    if (!changed.length || !currentRoot || currentRoot.path !== root) return;
+    if (!changed.length || !state.currentRoot || state.currentRoot.path !== root) return;
     // ツリーの TreeNode に has_changes を付与して再描画
     const changedMap = new Map(changed.map((c) => [c.path, c.change_count]));
-    markChanges(currentRoot.tree, changedMap);
-    tree.render(currentRoot.tree, currentRoot.path);
-    if (currentFile) tree.setActive(currentFile);
+    markChanges(state.currentRoot.tree, changedMap);
+    tree.render(state.currentRoot.tree, state.currentRoot.path);
+    if (state.currentFile) tree.setActive(state.currentFile);
   } catch {
     // 無視
   }
@@ -861,7 +579,7 @@ async function loadRoot(path: string): Promise<void> {
       showToast(t('toast.noMd'));
       return;
     }
-    currentRoot = { path, tree: node };
+    state.currentRoot = { path, tree: node };
     rootLabel.textContent = node.name;
     rootLabel.title = path;
     tree.render(node, path);
@@ -939,57 +657,26 @@ function formatRelativeTime(epochSecs: number): string {
 }
 
 async function showRecentFiles(): Promise<void> {
-  if (!currentRoot) {
+  if (!state.currentRoot) {
     showToast(t('toast.openDirFirst'));
     return;
   }
-  const root = currentRoot.path;
+  const root = state.currentRoot.path;
   try {
     const recent = (await invoke('get_recent_files', { root, limit: 30 })) as RecentFileInfo[];
     if (!recent.length) {
       showToast(t('recent.none'));
       return;
     }
-    const overlay = createEl('div', { class: 'changes-overlay' });
-    const panel = createEl('div', { class: 'changes-panel' });
-    const header = createEl('div', { class: 'changes-header' },
-      createEl('span', {}, t('recent.title')),
-      createEl('button', { class: 'btn-ghost', onClick: close }, '×'),
-    );
-    const list = createEl('div', { class: 'changes-list' });
-
-    for (const file of recent) {
-      const rel = root && file.path.startsWith(root)
-        ? file.path.slice(root.length).replace(/^\/+/, '')
-        : file.path;
-      const item = createEl('button', {
-        class: 'changes-item',
-        onClick: () => {
-          close();
-          void openFile(file.path);
-          tree.setActive(file.path);
-        },
+    openListOverlay(t('recent.title'), recent.map((file) => ({
+      primary: file.title || file.name,
+      secondary: relativeFromRoot(file.path, root),
+      meta: formatRelativeTime(file.modified),
+      onSelect: () => {
+        void openFile(file.path);
+        tree.setActive(file.path);
       },
-        createEl('span', { class: 'changes-item-name' }, file.title || file.name),
-        createEl('span', { class: 'changes-item-path' }, rel),
-        createEl('span', { class: 'changes-item-count' }, formatRelativeTime(file.modified)),
-      );
-      list.appendChild(item);
-    }
-
-    panel.appendChild(header);
-    panel.appendChild(list);
-    overlay.appendChild(panel);
-    document.body.appendChild(overlay);
-
-    function close() { overlay.remove(); }
-    overlay.addEventListener('click', (ev) => {
-      if (ev.target === overlay) close();
-    });
-    const onKey = (ev: KeyboardEvent) => {
-      if (ev.key === 'Escape') { close(); document.removeEventListener('keydown', onKey); }
-    };
-    document.addEventListener('keydown', onKey);
+    })));
   } catch {
     showToast(t('recent.fail'));
   }
@@ -997,58 +684,26 @@ async function showRecentFiles(): Promise<void> {
 
 // ─── 変更ファイル一覧パネル ───
 async function showChangedFiles(): Promise<void> {
-  if (!currentRoot) {
+  if (!state.currentRoot) {
     showToast(t('toast.openDirFirst'));
     return;
   }
-  const root = currentRoot.path;
+  const root = state.currentRoot.path;
   try {
     const changed = (await invoke('get_changed_files', { root })) as FileChangeInfo[];
     if (!changed.length) {
       showToast(t('changes.none'));
       return;
     }
-    // パレット風オーバーレイで表示
-    const overlay = createEl('div', { class: 'changes-overlay' });
-    const panel = createEl('div', { class: 'changes-panel' });
-    const header = createEl('div', { class: 'changes-header' },
-      createEl('span', {}, t('changes.title', changed.length)),
-      createEl('button', { class: 'btn-ghost', onClick: close }, '×'),
-    );
-    const list = createEl('div', { class: 'changes-list' });
-
-    for (const file of changed) {
-      const rel = root && file.path.startsWith(root)
-        ? file.path.slice(root.length).replace(/^\/+/, '')
-        : file.path;
-      const item = createEl('button', {
-        class: 'changes-item',
-        onClick: () => {
-          close();
-          void openFile(file.path);
-          tree.setActive(file.path);
-        },
+    openListOverlay(t('changes.title', changed.length), changed.map((file) => ({
+      primary: file.title || file.name,
+      secondary: relativeFromRoot(file.path, root),
+      meta: `+${file.change_count}`,
+      onSelect: () => {
+        void openFile(file.path);
+        tree.setActive(file.path);
       },
-        createEl('span', { class: 'changes-item-name' }, file.title || file.name),
-        createEl('span', { class: 'changes-item-path' }, rel),
-        createEl('span', { class: 'changes-item-count' }, `+${file.change_count}`),
-      );
-      list.appendChild(item);
-    }
-
-    panel.appendChild(header);
-    panel.appendChild(list);
-    overlay.appendChild(panel);
-    document.body.appendChild(overlay);
-
-    function close() { overlay.remove(); }
-    overlay.addEventListener('click', (ev) => {
-      if (ev.target === overlay) close();
-    });
-    const onKey = (ev: KeyboardEvent) => {
-      if (ev.key === 'Escape') { close(); document.removeEventListener('keydown', onKey); }
-    };
-    document.addEventListener('keydown', onKey);
+    })));
   } catch {
     showToast(t('changes.fail'));
   }
@@ -1060,62 +715,13 @@ async function pickAndLoad(): Promise<void> {
 }
 
 // ─── 簡易編集 (Cmd+E) ───
-async function enterEditMode(): Promise<void> {
-  if (!currentFile || activeEditor) return;
-  const path = currentFile;
-  try {
-    const result = (await invoke('read_markdown', { path })) as { content: string; modified: number | null };
-    // 現在の読みモードの DOM を退避
-    saveDomSnapshot();
-    clear(docContent);
-    docContent.dataset.editing = 'true';
-
-    const editorContainer = createEl('div', { class: 'editor-container' });
-    docContent.appendChild(editorContainer);
-
-    const isDark = currentTheme().includes('dark');
-    activeEditor = createEditor(editorContainer, {
-      content: result.content,
-      isDark,
-      onSave: async (content) => {
-        try {
-          await invoke('restore_file', { path, content });
-          // fs-changed イベントが発火し、自動で読みモードに戻る
-          exitEditMode();
-          showToast(t('toast.saved'));
-        } catch (e) {
-          showToast(t('toast.saveFail', String(e)));
-        }
-      },
-      onCancel: () => {
-        exitEditMode();
-      },
-    });
-    activeEditor.focus();
-    updateFileAskBtn();
-  } catch (e) {
-    showToast(t('toast.readFail', String(e)));
-  }
-}
-
-function exitEditMode(): void {
-  if (!activeEditor) return;
-  activeEditor.destroy();
-  activeEditor = null;
-  delete docContent.dataset.editing;
-  // キャッシュから復元して読みモードに戻す
-  if (currentFile) {
-    const snap = domCache.get(currentFile);
-    if (snap) {
-      restoreDomSnapshot(currentFile);
-    } else {
-      // キャッシュになければ再読み込み
-      cache.delete(currentFile);
-      void openFile(currentFile);
-    }
-  }
-  updateFileAskBtn();
-}
+const editMode = createEditMode({
+  docContent,
+  saveDomSnapshot: () => saveDomSnapshot(),
+  restoreDomSnapshot: (path) => restoreDomSnapshot(path),
+  reopenFile: (path) => openFile(path),
+  updateFileAskBtn: () => askBridge.updateFileAskBtn(),
+});
 
 // ─── イベント配線 ───
 document.getElementById('openBtnLarge')?.addEventListener('click', pickAndLoad);
@@ -1135,7 +741,7 @@ function toggleSidebar(): void {
 // ─── ツールバーボタン ───
 document.getElementById('tbSidebar')?.addEventListener('click', toggleSidebar);
 document.getElementById('tbSearch')?.addEventListener('click', () => {
-  if (currentRoot) search.open(currentRoot.path);
+  if (state.currentRoot) search.open(state.currentRoot.path);
   else showToast(t('toast.openDirFirst'));
 });
 document.getElementById('tbPalette')?.addEventListener('click', () => {
@@ -1161,17 +767,17 @@ void listen('tauri://drag-drop', async (ev) => {
   if (!paths || paths.length === 0) return;
 
   // 編集モード中に画像をドロップしたら本文に挿入 (同フォルダにコピー)
-  if (activeEditor && currentFile) {
+  if (state.activeEditor && state.currentFile) {
     const imgs = paths.filter((p) => /\.(png|jpe?g|gif|webp|svg|heic|bmp|avif)$/i.test(p));
     if (imgs.length > 0) {
-      const dir = currentFile.substring(0, currentFile.lastIndexOf('/'));
+      const dir = state.currentFile.substring(0, state.currentFile.lastIndexOf('/'));
       let inserted = 0;
       for (const src of imgs) {
         try {
           const newPath = (await invoke('import_asset', { src, dstDir: dir })) as string;
           const name = newPath.split('/').pop() || '';
           const alt = name.replace(/\.[^.]+$/, '');
-          activeEditor.insertAtCursor(`\n![${alt}](${name})\n`);
+          state.activeEditor.insertAtCursor(`\n![${alt}](${name})\n`);
           inserted++;
         } catch (e) {
           showToast(t('toast.imageFail', String(e)));
@@ -1211,324 +817,42 @@ filterInput.addEventListener('keydown', (ev) => {
 });
 
 // ─── グローバルキーボード ───
-document.addEventListener('keydown', (ev) => {
-  const meta = ev.metaKey || ev.ctrlKey;
-
-  // Quick Look が開いている間は Space/Esc で閉じる (最優先)
-  if (quickLookOverlay) {
-    if (ev.key === ' ' || ev.key === 'Escape') {
-      ev.preventDefault();
-      closeQuickLook();
-      return;
-    }
-  }
-
-  if (meta && ev.key.toLowerCase() === 'b') {
-    ev.preventDefault();
-    toggleSidebar();
-    return;
-  }
-  if (meta && ev.key.toLowerCase() === 'e') {
-    ev.preventDefault();
-    if (activeEditor) {
-      exitEditMode();
-    } else {
-      void enterEditMode();
-    }
-    return;
-  }
-  // 編集モード中は他のグローバルショートカットを無効化 (Cmd+S, Escape は editor.ts 内で処理)
-  if (activeEditor) return;
-  if (meta && ev.key.toLowerCase() === 'o') {
-    ev.preventDefault();
-    void pickAndLoad();
-    return;
-  }
-  if (meta && ev.key.toLowerCase() === 'p') {
-    ev.preventDefault();
-    palette.open(tree.flatten());
-    return;
-  }
-  if (meta && ev.shiftKey && ev.key.toLowerCase() === 't') {
-    ev.preventDefault();
-    void translateCurrentDoc();
-    return;
-  }
-  if (meta && ev.key.toLowerCase() === 'f') {
-    ev.preventDefault();
-    if (!currentRoot) {
-      showToast(t('toast.openDirFirst'));
-      return;
-    }
-    search.open(currentRoot.path);
-    return;
-  }
-  if (meta && ev.key.toLowerCase() === 'l') {
-    ev.preventDefault();
-    const selObj = window.getSelection();
-    const sel = selObj?.toString() || '';
-    if (sel.trim() && selObj && selObj.rangeCount > 0) {
-      askForSelection(sel, selObj.getRangeAt(0));
-    } else if (ask.hasAny()) {
-      // 選択なしでも既存パネルがあれば最後に触ったやつに focus (継続質問)
-      ask.focusLast();
-    } else {
-      askForFile();
-    }
-    return;
-  }
-  if (ev.key === '@' && document.activeElement?.tagName !== 'INPUT') {
-    ev.preventDefault();
-    filterInput.focus();
-    filterInput.select();
-    return;
-  }
-  if (ev.key === 'Escape') {
-    // ask パネルは内部の input keydown で自身を閉じるのでここでは扱わない。
-    if (search.isOpen()) search.close();
-    else if (palette.isOpen()) palette.close();
-    else tree.cancelPendingDelete();
-    return;
-  }
-  const inInput = ['INPUT', 'TEXTAREA'].includes(
-    document.activeElement?.tagName || '',
-  );
-
-  // Cmd+Z は input/textarea の native undo を邪魔しないので、そこ以外で削除 undo
-  if (meta && ev.key.toLowerCase() === 'z' && !inInput && !ev.shiftKey) {
-    ev.preventDefault();
-    void undoDelete();
-    return;
-  }
-
-  if (inInput) return;
-
-  // Delete / Backspace でツリー選択中のファイル削除 (2 段階確認)
-  if (ev.key === 'Delete' || ev.key === 'Backspace') {
-    ev.preventDefault();
-    tree.requestDeleteSelected();
-    return;
-  }
-
-  // Tab で左右ペイン切替 (Shift+Tab も逆サイドへ)
-  if (ev.key === 'Tab') {
-    ev.preventDefault();
-    const onLeft = leftPane.contains(document.activeElement);
-    const target = onLeft ? docContent : treeContainer;
-    target.focus();
-    document.body.classList.toggle('focus-tree', !onLeft);
-    return;
-  }
-
-  // 右ペインフォーカス時は矢印/Space/PageUp/Down でスクロール
-  if (document.activeElement === docContent) {
-    // ← で左ペイン (ツリー) にフォーカスを戻す
-    if (ev.key === 'ArrowLeft' || ev.key === 'h') {
-      ev.preventDefault();
-      treeContainer.focus();
-      document.body.classList.add('focus-tree');
-      return;
-    }
-    const step = 40;
-    const page = Math.max(80, docContent.clientHeight * 0.9);
-    if (ev.key === 'ArrowDown' || ev.key === 'j') {
-      ev.preventDefault();
-      docContent.scrollBy({ top: step });
-      return;
-    }
-    if (ev.key === 'ArrowUp' || ev.key === 'k') {
-      ev.preventDefault();
-      docContent.scrollBy({ top: -step });
-      return;
-    }
-    if (ev.key === ' ' || ev.key === 'PageDown') {
-      ev.preventDefault();
-      docContent.scrollBy({ top: page });
-      return;
-    }
-    if (ev.key === 'PageUp') {
-      ev.preventDefault();
-      docContent.scrollBy({ top: -page });
-      return;
-    }
-    if (ev.key === 'Home') {
-      ev.preventDefault();
-      docContent.scrollTo({ top: 0 });
-      return;
-    }
-    if (ev.key === 'End') {
-      ev.preventDefault();
-      docContent.scrollTo({ top: docContent.scrollHeight });
-      return;
-    }
-  }
-
-  // それ以外 (左ペイン側): 矢印/j/k で tree 移動、Enter で開く
-  document.body.classList.add('focus-tree');
-  if (ev.key === 'ArrowDown' || ev.key === 'j') {
-    ev.preventDefault();
-    tree.moveSelection(1);
-    schedulePreview();
-  } else if (ev.key === 'ArrowUp' || ev.key === 'k') {
-    ev.preventDefault();
-    tree.moveSelection(-1);
-    schedulePreview();
-  } else if (ev.key === 'ArrowRight' || ev.key === 'l') {
-    ev.preventDefault();
-    const kind = tree.getSelectedKind();
-    if (kind === 'dir') {
-      tree.expandSelected();
-    } else if (tree.getNavMode() === 'file') {
-      if (!tree.enterOutlineMode()) {
-        const n = tree.getSelectedNode();
-        if (n) void openFile(n.path).then(() => tree.enterOutlineMode());
-      }
-    } else if (tree.getNavMode() === 'outline') {
-      docContent.focus();
-      document.body.classList.remove('focus-tree');
-    }
-  } else if (ev.key === 'ArrowLeft' || ev.key === 'h') {
-    ev.preventDefault();
-    const kind = tree.getSelectedKind();
-    if (kind === 'dir') {
-      tree.collapseSelected();
-    } else {
-      tree.exitOutlineMode();
-    }
-  } else if (ev.key === 'Enter') {
-    ev.preventDefault();
-    tree.openSelected();
-  } else if (ev.key === ' ') {
-    // ツリー選択中のファイルを Quick Look
-    const n = tree.getSelectedNode();
-    if (n) {
-      ev.preventDefault();
-      void quickLookFor(n.path);
-    }
-  }
+installGlobalKeymap({
+  ask, askBridge, palette, search, tree, fileOps, editMode,
+  filterInput, leftPane, treeContainer, docContent,
+  toggleSidebar,
+  pickAndLoad,
+  translateCurrentDoc,
+  schedulePreview,
+  openFile,
 });
 
-// ─── Ask を呼ぶヘルパ (⌘L・選択バー・右下ボタンから共通利用) ───
-function currentAskContext(): AskContext | null {
-  if (!currentFile || !currentRoot) return null;
-  const cached = cache.get(currentFile);
-  const filename = currentFile.split('/').pop() || '';
-  return {
-    title: filename.replace(/\.md$/i, ''),
-    path: currentFile,
-    root: currentRoot.path,
-    fileContent: cached?.rawBody,
-  };
-}
-
-interface AskOpenOpts { prefill?: string; autoSend?: boolean; }
-
-function askForSelection(selection: string, range: Range, opts?: AskOpenOpts): void {
-  if (!aiAvailable) { showToast(t('toast.noProvider')); return; }
-  const ctx = currentAskContext();
-  if (!ctx) { showToast(t('toast.openFile')); return; }
-  const anchor = anchorBlockOf(range);
-  ask.open(selection, ctx, anchor, {
-    onOpen: () => highlightRange(range),
-    prefill: opts?.prefill,
-    autoSend: opts?.autoSend,
-  });
-}
-
-function askForFile(opts?: AskOpenOpts): void {
-  if (!aiAvailable) { showToast(t('toast.noProvider')); return; }
-  const ctx = currentAskContext();
-  if (!ctx) { showToast(t('toast.openFile')); return; }
-  ask.open('', ctx, null, { prefill: opts?.prefill, autoSend: opts?.autoSend });
-}
-
-// ─── 選択フロートバー ───
-const selectionBar = createSelectionBar({
-  aiAvailable: () => aiAvailable && !!currentFile,
-  onAsk: () => {
-    const selObj = window.getSelection();
-    const sel = selObj?.toString() || '';
-    if (!sel.trim() || !selObj || selObj.rangeCount === 0) return;
-    askForSelection(sel, selObj.getRangeAt(0));
-  },
-  onTranslate: () => {
-    const selObj = window.getSelection();
-    const sel = selObj?.toString().trim() || '';
-    if (!sel || !selObj || selObj.rangeCount === 0) return;
-    const range = selObj.getRangeAt(0).cloneRange();
-    tpLoading({ range, originalText: sel });
-    selectionBar.hide();
-    void (async () => {
-      try {
-        const translated = (await invoke('translate_text', { text: sel.slice(0, 4000) })) as string;
-        tpResult(translated);
-      } catch (e) {
-        tpError(t('translate.fail', String(e)));
-      }
-    })();
-  },
-  onSummarize: () => {
-    const selObj = window.getSelection();
-    const sel = selObj?.toString() || '';
-    if (!sel.trim() || !selObj || selObj.rangeCount === 0) return;
-    askForSelection(sel, selObj.getRangeAt(0), { prefill: t('ask.tpl.summarize'), autoSend: true });
-  },
-  onCopy: () => {
-    const sel = window.getSelection()?.toString() || '';
-    if (!sel) return;
-    navigator.clipboard.writeText(sel).then(() => showToast(t('toast.copied'))).catch(() => {});
-  },
-});
-
+// 選択状態の変化を askBridge に橋渡し
 docContent.addEventListener('mouseup', () => {
-  // mouseup 直後は selection がまだ確定していないことがあるので 1 フレーム待つ
-  requestAnimationFrame(() => {
-    selectionBar.updateFor(docContent);
-    updateFileAskBtn();
-  });
+  // mouseup 直後は selection がまだ確定していないので 1 フレーム待つ
+  requestAnimationFrame(() => askBridge.onSelectionChanged());
 });
-document.addEventListener('selectionchange', () => {
-  const sel = window.getSelection()?.toString().trim() || '';
-  if (!sel) {
-    selectionBar.hide();
-    updateFileAskBtn();
-  }
-});
-
-// ─── 右下: 「このメモについて聞く」常時ボタン (選択なし時) ───
-const fileAskBtn = createEl('button', { id: 'fileAskBtn', class: 'file-ask-btn' },
-  createEl('span', { class: 'file-ask-icon' }, '✦'),
-  createEl('span', {}, t('ask.askFile')),
-);
-fileAskBtn.hidden = true;
-fileAskBtn.addEventListener('click', () => askForFile());
-document.body.appendChild(fileAskBtn);
-
-function updateFileAskBtn(): void {
-  const sel = window.getSelection()?.toString().trim() || '';
-  const show = aiAvailable && !!currentFile && !sel && !activeEditor;
-  fileAskBtn.hidden = !show;
-}
+document.addEventListener('selectionchange', () => askBridge.onSelectionCleared());
 
 // ─── ファイル変更監視 ───
 void listen('fs-changed', async (ev) => {
   const paths = ev.payload as string[];
   for (const p of paths) {
-    cache.delete(p);
-    domCache.delete(p);
-    diffCache.delete(p);
+    state.cache.delete(p);
+    state.domCache.delete(p);
+    state.diffCache.delete(p);
   }
-  if (currentFile && paths.includes(currentFile)) {
+  if (state.currentFile && paths.includes(state.currentFile)) {
     const scrollTop = docContent.scrollTop;
-    await openFile(currentFile);
+    await openFile(state.currentFile);
     docContent.scrollTop = scrollTop;
   }
-  if (currentRoot) {
-    const fresh = (await invoke('scan_markdown_tree', { root: currentRoot.path })) as TreeNode | null;
+  if (state.currentRoot) {
+    const fresh = (await invoke('scan_markdown_tree', { root: state.currentRoot.path })) as TreeNode | null;
     if (fresh) {
-      currentRoot.tree = fresh;
-      tree.render(fresh, currentRoot.path);
-      if (currentFile) tree.setActive(currentFile);
+      state.currentRoot.tree = fresh;
+      tree.render(fresh, state.currentRoot.path);
+      if (state.currentFile) tree.setActive(state.currentFile);
     }
   }
 });
@@ -1545,7 +869,7 @@ async function initProviderMenu(): Promise<void> {
   try {
     const providers = (await invoke('get_ai_providers')) as AiProviderInfo[];
     const anyAvailable = providers.some((p) => p.available);
-    aiAvailable = anyAvailable;
+    state.aiAvailable = anyAvailable;
 
     // AI プロバイダーが 1 つもなければセレクターを隠してビューア専用モード
     const providerSelector = byId('providerSelector');
@@ -1568,7 +892,7 @@ async function initProviderMenu(): Promise<void> {
     }
 
     if (active) {
-      activeProviderName = active.name;
+      state.activeProviderName = active.name;
       updateProviderBtnLabel(active.name);
     }
 
@@ -1597,7 +921,7 @@ async function initProviderMenu(): Promise<void> {
 async function selectProvider(id: string, name: string): Promise<void> {
   try {
     await invoke('set_active_provider', { provider: id });
-    activeProviderName = name;
+    state.activeProviderName = name;
     updateProviderBtnLabel(name);
     providerMenu.hidden = true;
     // active クラス更新
@@ -1767,11 +1091,11 @@ void listen('menu-action', (ev) => {
   const id = ev.payload as string;
   switch (id) {
     case 'open_dir': void pickAndLoad(); break;
-    case 'undo_delete': void undoDelete(); break;
+    case 'undo_delete': void fileOps.undoDelete(); break;
     case 'toggle_sidebar': toggleSidebar(); break;
     case 'quick_switch': palette.open(tree.flatten()); break;
     case 'search':
-      if (currentRoot) search.open(currentRoot.path);
+      if (state.currentRoot) search.open(state.currentRoot.path);
       else showToast(t('toast.openDirFirst'));
       break;
     case 'ask_ai':
@@ -1779,18 +1103,17 @@ void listen('menu-action', (ev) => {
       break;
     case 'translate': void translateCurrentDoc(); break;
     case 'reveal_finder':
-      if (currentFile) void invoke('reveal_in_finder', { path: currentFile });
+      if (state.currentFile) void invoke('reveal_in_finder', { path: state.currentFile });
       break;
     case 'edit_toggle':
-      if (activeEditor) exitEditMode();
-      else void enterEditMode();
+      editMode.toggle();
       break;
   }
 });
 
 // ─── アプリ終了時にスクロール位置を保存 ───
 window.addEventListener('beforeunload', () => {
-  if (currentFile) saveScrollPos(currentFile, docContent.scrollTop);
+  if (state.currentFile) saveScrollPos(state.currentFile, docContent.scrollTop);
 });
 
 // ─── 起動 ───
@@ -1827,7 +1150,7 @@ langBtn.addEventListener('click', () => {
 (async () => {
   try {
     await initProviderMenu();
-    updateFileAskBtn();
+    askBridge.updateFileAskBtn();
     const initial = (await invoke('get_initial_path')) as string | null;
     if (initial) {
       await loadRoot(initial);

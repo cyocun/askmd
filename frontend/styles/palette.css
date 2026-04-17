@@ -1,0 +1,286 @@
+/* ─────────── クイックスイッチャー (⌘P) ─────────── */
+#paletteOverlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.35);
+  display: grid;
+  align-items: start;
+  justify-items: center;
+  padding-top: 20vh;
+  z-index: 100;
+}
+#palette {
+  width: 520px;
+  max-width: 85vw;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.35);
+  overflow: hidden;
+  display: grid;
+  grid-template-rows: auto 1fr;
+}
+#paletteInput {
+  border: none;
+  border-bottom: 1px solid var(--border-subtle);
+  border-radius: 0;
+  padding: 12px 16px;
+  font-size: 14px;
+  background: transparent;
+}
+#paletteList {
+  max-height: 400px;
+  overflow-y: auto;
+}
+.palette-item {
+  padding: 6px 16px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 10px;
+  align-items: center;
+  cursor: default;
+}
+.palette-item:hover, .palette-item.active {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+.palette-item .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.palette-item .path {
+  font-size: 11px;
+  color: var(--text-faint);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 300px;
+}
+
+/* ─────────── Search (全文横断 ⌘F) ─────────── */
+#searchOverlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.35);
+  display: grid;
+  align-items: start;
+  justify-items: center;
+  padding-top: 12vh;
+  z-index: 100;
+}
+#searchBox {
+  width: 640px;
+  max-width: 90vw;
+  max-height: 70vh;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.35);
+  display: grid;
+  grid-template-rows: auto auto 1fr;
+  overflow: hidden;
+}
+#searchInput {
+  border: none;
+  border-bottom: 1px solid var(--border-subtle);
+  border-radius: 0;
+  padding: 12px 16px;
+  font-size: 14px;
+  background: transparent;
+  color: var(--text);
+  outline: none;
+}
+#searchStatus {
+  padding: 4px 16px;
+  font-size: 11px;
+  color: var(--text-faint);
+  border-bottom: 1px solid var(--border-subtle);
+  min-height: 10px;
+}
+#searchStatus:empty { display: none; }
+#searchResults {
+  overflow-y: auto;
+}
+.search-item {
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--border-subtle);
+  cursor: default;
+  display: grid;
+  gap: 3px;
+}
+.search-item:hover, .search-item.active {
+  background: var(--bg-hover);
+}
+.search-item-head {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  font-size: 12.5px;
+  color: var(--text);
+}
+.search-item-name {
+  font-weight: 600;
+}
+.search-item-line {
+  color: var(--text-faint);
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 11px;
+}
+.search-item-path {
+  color: var(--text-faint);
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  min-width: 0;
+}
+.search-item-snippet {
+  font-size: 12px;
+  color: var(--text-secondary);
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ─────────── 変更ファイル一覧パネル / 最近更新リスト (共用) ─────────── */
+.changes-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.35);
+  display: grid;
+  align-items: start;
+  justify-items: center;
+  padding-top: 15vh;
+  z-index: 100;
+}
+.changes-panel {
+  width: 480px;
+  max-width: 90vw;
+  max-height: 60vh;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.35);
+  overflow: hidden;
+  display: grid;
+  grid-template-rows: auto 1fr;
+}
+.changes-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border-subtle);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+.changes-list {
+  overflow-y: auto;
+  padding: 4px 0;
+}
+.changes-item {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  grid-template-rows: auto auto;
+  gap: 0 8px;
+  width: 100%;
+  padding: 8px 14px;
+  border: none;
+  background: none;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+.changes-item:hover { background: var(--bg-hover); }
+.changes-item-name {
+  font-weight: 500;
+  grid-column: 1;
+  grid-row: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.changes-item-path {
+  font-size: 11px;
+  color: var(--text-faint);
+  grid-column: 1;
+  grid-row: 2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.changes-item-count {
+  grid-column: 2;
+  grid-row: 1 / 3;
+  align-self: center;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--accent);
+  background: var(--accent-soft);
+  padding: 2px 8px;
+  border-radius: 10px;
+}
+
+/* ─────────── Diff ビュー ─────────── */
+.diff-view-panel {
+  width: 780px;
+  max-width: 95vw;
+  max-height: 80vh;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.35);
+  overflow: hidden;
+  display: grid;
+  grid-template-rows: auto 1fr;
+}
+.diff-view-content {
+  overflow: auto;
+  padding: 8px 0;
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 12.5px;
+  line-height: 1.55;
+}
+.diff-view-content > div {
+  padding: 0 14px 0 8px;
+  white-space: pre-wrap;
+  word-break: break-all;
+  min-height: 1.55em;
+}
+.diff-ctx { color: var(--text-secondary); }
+.diff-add {
+  background: rgba(76, 175, 80, 0.12);
+  color: var(--text);
+}
+.diff-del {
+  background: rgba(244, 67, 54, 0.12);
+  color: var(--text);
+}
+.diff-sign {
+  display: inline-block;
+  width: 16px;
+  text-align: center;
+  margin-right: 4px;
+  color: var(--text-faint);
+  user-select: none;
+}
+.diff-add .diff-sign { color: #3fb950; }
+.diff-del .diff-sign { color: #f85149; }
+.diff-em {
+  border-radius: 2px;
+  padding: 0 1px;
+}
+.diff-add .diff-em { background: rgba(76, 175, 80, 0.35); }
+.diff-del .diff-em { background: rgba(244, 67, 54, 0.35); }
+.diff-sep {
+  text-align: center;
+  color: var(--text-faint);
+  font-size: 11px;
+  padding: 6px 0;
+  border-top: 1px dashed var(--border-subtle);
+  margin-top: 4px;
+}

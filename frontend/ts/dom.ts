@@ -47,3 +47,11 @@ export function byId(id: string): HTMLElement {
 export function clear(el: HTMLElement): void {
   while (el.firstChild) el.removeChild(el.firstChild);
 }
+
+// サニタイズ済み HTML 文字列を DOMParser 経由で host に挿入する。
+// 呼び出し側で render() (DOMPurify 通過) 済みのものしか渡さない前提。
+// innerHTML 直書きを避けるため DOMParser + appendChild にする。
+export function insertSanitizedHtml(host: HTMLElement, html: string): void {
+  const doc = new DOMParser().parseFromString(html, 'text/html');
+  while (doc.body.firstChild) host.appendChild(doc.body.firstChild);
+}

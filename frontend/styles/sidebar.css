@@ -1,0 +1,227 @@
+/* ─────────── 左ペイン ─────────── */
+#leftPane {
+  grid-area: left;
+  display: grid;
+  grid-template-rows: 48px auto 1fr 40px;
+  background: var(--bg-surface);
+  border-right: 1px solid var(--border);
+  min-height: 0;
+  overflow: hidden;
+}
+
+#searchBar {
+  padding: 8px 10px;
+  display: grid;
+}
+
+#filterInput, #paletteInput, .ask-input {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 7px 12px;
+  color: var(--text);
+  font-size: 13px;
+  outline: none;
+  min-width: 0;
+}
+
+#filterInput:focus, #paletteInput:focus, .ask-input:focus {
+  border-color: var(--accent);
+  background: var(--bg-surface);
+}
+
+#rootLabel {
+  padding: 2px 14px 6px;
+  font-size: 11px;
+  color: var(--text-faint);
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+#treeContainer {
+  overflow-y: auto;
+  min-height: 0;
+  padding: 0 6px 8px;
+}
+
+/* ペインのフォーカス: リングなし (選択アイテムの色で判別、Finder 方式) */
+#treeContainer:focus,
+#treeContainer:focus-visible,
+#docContent:focus,
+#docContent:focus-visible {
+  outline: none;
+}
+/* ツリーにフォーカスがある時: Finder と同じくブルー背景 + 白文字 */
+body.focus-tree .tree-node.selected {
+  background: var(--bg-selected-focus);
+  color: #fff;
+}
+body.focus-tree .tree-node.selected .tree-title {
+  color: rgba(255, 255, 255, 0.7);
+}
+body.focus-tree .tree-node.selected .tree-icon {
+  color: #fff;
+}
+body.focus-tree .tree-node.selected .tree-delete {
+  color: rgba(255, 255, 255, 0.6);
+}
+body.focus-tree .tree-node.selected .tree-outline-indicator {
+  color: rgba(255, 255, 255, 0.7);
+}
+
+#leftFooter {
+  border-top: 1px solid var(--border-subtle);
+  padding: 6px 10px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 2px;
+}
+#langBtn {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 6px;
+  color: var(--text-faint);
+}
+
+/* ─────────── ツリー変更バッジ ─────────── */
+.tree-change-badge {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  flex-shrink: 0;
+  margin-left: 2px;
+}
+
+/* ─────────── ツリー ─────────── */
+.tree-node {
+  display: grid;
+  grid-template-columns: auto 1fr auto auto auto;
+  align-items: center;
+  column-gap: 8px;
+  padding: 7px 10px;
+  border-radius: 6px;
+  cursor: default;
+  user-select: none;
+  font-size: 13px;
+  color: var(--text-secondary);
+  min-width: 0;
+  position: relative;
+}
+.tree-node:hover { background: var(--bg-hover); color: var(--text); }
+.tree-node.selected { background: var(--bg-selected); color: var(--text); }
+.tree-node.active { background: var(--accent-soft); color: var(--text); }
+.tree-node.confirm-delete {
+  background: rgba(230, 80, 80, 0.18);
+  outline: 1px solid rgba(230, 80, 80, 0.6);
+  color: var(--text);
+}
+
+.tree-icon {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  opacity: 0.75;
+}
+
+.tree-children {
+  display: grid;
+}
+
+.tree-name-wrap {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+}
+.tree-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tree-title {
+  font-size: 10.5px;
+  color: var(--text-faint);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tree-node.selected .tree-title,
+.tree-node.active .tree-title { color: var(--text-secondary); }
+
+.tree-node.hidden { display: none; }
+
+/* バツアイコン (削除ボタン) — hover か selected / confirm 時だけ出す */
+.tree-delete {
+  grid-column: 4;
+  width: 20px;
+  height: 20px;
+  border: none;
+  background: transparent;
+  color: var(--text-faint);
+  cursor: pointer;
+  border-radius: 3px;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 2px;
+}
+.tree-delete .tree-icon {
+  width: 13px;
+  height: 13px;
+}
+.tree-node:hover .tree-delete,
+.tree-node.selected .tree-delete,
+.tree-node.confirm-delete .tree-delete { display: inline-flex; }
+.tree-delete:hover { background: rgba(230, 80, 80, 0.2); color: #e57373; }
+.tree-node.confirm-delete .tree-delete { color: #e57373; }
+
+/* ▸ / ▾ アウトライン展開インジケータ (active + outline あり のファイルのみ表示) */
+.tree-outline-indicator {
+  color: var(--text-faint);
+  width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  cursor: pointer;
+  border-radius: 3px;
+  opacity: 0.6;
+}
+.tree-outline-indicator:hover { opacity: 1; background: var(--bg-hover); }
+.tree-node.active .tree-outline-indicator { color: var(--accent); opacity: 0.8; }
+
+/* アウトライン (アクティブファイル配下の見出しリスト) */
+.tree-outline {
+  display: grid;
+  padding: 2px 0 6px;
+}
+.tree-outline-item {
+  padding: 3px 8px;
+  font-size: 11.5px;
+  color: var(--text-faint);
+  cursor: default;
+  border-radius: 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.tree-outline-item:hover { background: var(--bg-hover); color: var(--text); }
+.tree-outline-item.selected { background: var(--bg-selected); color: var(--text); }
+.tree-outline-h1 { font-weight: 600; color: var(--text-secondary); }
+.tree-outline-h2 { font-weight: 500; }
+.tree-outline-h3 { font-size: 11px; }
+
+/* ─────────── ツリー D&D 視覚フィードバック ─────────── */
+.tree-node.dragging { opacity: 0.45; }
+.tree-node.drop-target {
+  background: var(--accent-soft);
+  outline: 1px dashed var(--accent);
+  outline-offset: -1px;
+}

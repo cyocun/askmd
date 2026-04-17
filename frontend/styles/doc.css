@@ -1,0 +1,436 @@
+/* ─────────── 右ペイン ─────────── */
+#rightPane {
+  grid-area: right;
+  display: grid;
+  grid-template-rows: auto 1fr;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+#docHeader {
+  padding: 8px 32px;
+  min-height: 0;
+  display: grid;
+  gap: 4px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+#docHeader.empty { display: none; }
+.doc-heading {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  letter-spacing: -0.01em;
+}
+.doc-info-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.doc-title {
+  font-size: 12px;
+  color: var(--text-faint);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+  cursor: pointer;
+  border-radius: 4px;
+  padding: 1px 4px;
+}
+.doc-title:hover {
+  background: var(--bg-hover);
+  color: var(--text-secondary);
+}
+.doc-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+  margin-left: auto;
+}
+.doc-action-btn {
+  background: none;
+  border: 1px solid transparent;
+  color: var(--text-faint);
+  cursor: pointer;
+  border-radius: 6px;
+  padding: 4px 10px;
+  font-size: 12px;
+  font-family: inherit;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  transition: background 0.12s, border-color 0.12s;
+}
+.doc-action-btn:hover {
+  background: var(--bg-hover);
+  border-color: var(--border);
+  color: var(--text);
+}
+.doc-action-btn svg {
+  width: 14px;
+  height: 14px;
+}
+.doc-action-btn.loading {
+  opacity: 0.5;
+  pointer-events: none;
+}
+.doc-meta {
+  display: flex;
+  gap: 6px;
+  flex-wrap: nowrap;
+  font-size: 11px;
+  color: var(--text-faint);
+  flex-shrink: 0;
+}
+.doc-meta-tag {
+  background: var(--tag-bg);
+  padding: 2px 8px;
+  border-radius: 8px;
+}
+.doc-sep {
+  color: var(--border);
+  margin: 0 2px;
+}
+
+#docContent {
+  overflow-y: auto;
+  padding: 0 32px 80px;
+  min-height: 0;
+  min-width: 0;
+  line-height: 1.7;
+  position: relative;
+}
+/* 編集モード: padding を消して CodeMirror をフル幅に */
+#docContent[data-editing] {
+  padding: 0;
+  overflow: hidden;
+}
+.editor-container {
+  height: 100%;
+  overflow: hidden;
+}
+.editor-container .cm-editor {
+  height: 100%;
+}
+.editor-container .cm-scroller {
+  overflow: auto;
+  padding: 0 16px;
+}
+
+#emptyState {
+  max-width: 520px;
+  margin: 0 auto;
+  padding: 24px;
+  color: var(--text-secondary);
+  text-align: center;
+  /* 上下中央 */
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+}
+#emptyState .empty-hint {
+  margin: 14px 0 0;
+  font-size: 12px;
+  color: var(--text-faint);
+}
+#emptyState .empty-sep {
+  margin: 0 8px;
+  opacity: 0.6;
+}
+.btn-large {
+  font-size: 13.5px;
+  padding: 9px 22px;
+  border-radius: 6px;
+  font-weight: 500;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+}
+
+/* ─── 最近開いたディレクトリ (empty state) ─── */
+.recent-heading {
+  margin-top: 28px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-faint);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  text-align: left;
+}
+.recent-list {
+  list-style: none;
+  padding: 0;
+  margin: 8px 0 0;
+  text-align: left;
+}
+.recent-list li { margin: 0; }
+.recent-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 12px;
+  border: none;
+  background: none;
+  color: var(--text-secondary);
+  font-size: 13px;
+  cursor: pointer;
+  border-radius: 5px;
+  text-align: left;
+}
+.recent-item:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+.recent-item-name {
+  font-weight: 500;
+  color: var(--text);
+}
+.recent-item-path {
+  font-size: 11.5px;
+  color: var(--text-faint);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ─────────── Markdown 本文 ─────────── */
+.md-body {
+  max-width: 780px;
+  margin: 0 auto;
+  position: relative; /* .ask-highlight を相対配置するため */
+  overflow-wrap: break-word;
+}
+/* 見出しごとのセクション。sticky の入れ替わりを可能にする */
+.md-section {}
+
+/* Ask パネルを開いた時の「引用元」ハイライト。
+   range.getClientRects() の矩形ごとに生成される。pre/コードブロック内も含む。 */
+.ask-highlight {
+  position: absolute;
+  background: var(--accent-soft);
+  border-radius: 2px;
+  pointer-events: none;
+  z-index: 1;
+}
+.md-body h1, .md-body h2, .md-body h3, .md-body h4 {
+  color: var(--text);
+  font-weight: 600;
+  margin: 0 0 0.6em;
+  padding: 0;
+  letter-spacing: -0.01em;
+  position: sticky;
+  top: 0;
+  background: var(--bg);
+  z-index: 10;
+}
+.md-section {
+  padding-top: 1.2em;
+}
+.md-section:first-child {
+  padding-top: 0;
+}
+.md-body h1 { font-size: 1.8em; border-bottom: 1px solid var(--border-subtle); padding-bottom: 0.3em; }
+.md-body h2 { font-size: 1.4em; border-bottom: 1px solid var(--border-subtle); padding-bottom: 0.25em; }
+.md-body h3 { font-size: 1.15em; }
+.md-body h4 { font-size: 1.0em; }
+.md-body p { margin: 0.8em 0; }
+.md-body ul, .md-body ol { padding-left: 1.6em; margin: 0.6em 0; }
+.md-body li { margin: 0.15em 0; }
+.md-body a { color: var(--accent); text-decoration: none; }
+.md-body a:hover { text-decoration: underline; }
+.md-body blockquote {
+  border-left: 3px solid var(--quote-border);
+  padding: 0.1em 0 0.1em 1em;
+  margin: 0.8em 0;
+  color: var(--text-secondary);
+}
+.md-body code {
+  background: var(--code-inline-bg);
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-size: 0.9em;
+}
+.md-body pre {
+  position: relative;
+  background: var(--bg-code);
+  padding: 12px 14px;
+  border-radius: 6px;
+  overflow-x: auto;
+  margin: 0.8em 0;
+  border: 1px solid var(--border-subtle);
+}
+.code-copy-btn {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  padding: 2px 8px;
+  font-size: 11px;
+  font-family: inherit;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg-surface);
+  color: var(--text-faint);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s;
+  z-index: 2;
+}
+.md-body pre:hover .code-copy-btn { opacity: 1; }
+.code-copy-btn:hover { background: var(--bg-hover); color: var(--text); }
+.code-copy-btn.copied { color: #3fb950; border-color: #3fb950; }
+
+.md-body pre code {
+  background: transparent;
+  padding: 0;
+  font-size: 12.5px;
+  line-height: 1.55;
+}
+.md-body table {
+  border-collapse: collapse;
+  margin: 0.8em 0;
+  font-size: 0.95em;
+  display: block;
+  overflow-x: auto;
+}
+.md-body th, .md-body td {
+  border: 1px solid var(--border);
+  padding: 5px 10px;
+}
+.md-body th { background: var(--bg-hover); font-weight: 600; }
+.md-body hr { border: none; border-top: 1px solid var(--border-subtle); margin: 1.8em 0; }
+.md-body img { max-width: 100%; border-radius: 4px; }
+
+/* ─── doc ヘッダー差分バッジ ─── */
+.doc-diff-badge {
+  color: var(--accent) !important;
+  background: var(--accent-soft);
+  border-color: transparent;
+  font-weight: 600;
+}
+.doc-diff-badge:hover { opacity: 0.7; }
+.doc-diff-badge.active {
+  background: var(--accent);
+  color: #fff !important;
+}
+
+/* ─── レンダリング済み markdown 上の差分ハイライト ─── */
+.diff-block-add {
+  border-left: 3px solid #3fb950;
+  background: rgba(76, 175, 80, 0.08);
+  padding-left: 10px !important;
+  margin-left: -13px;
+}
+.diff-block-change {
+  border-left: 3px solid #d29922;
+  background: rgba(210, 153, 34, 0.08);
+  padding-left: 10px !important;
+  margin-left: -13px;
+}
+
+/* ─── タスクリスト (チェックボックス) ─── */
+.md-body .task-list-item {
+  list-style: none;
+  margin-left: -1.2em;
+}
+.md-body .task-list-item input[type="checkbox"] {
+  margin-right: 6px;
+  vertical-align: middle;
+  accent-color: var(--accent);
+  width: 14px;
+  height: 14px;
+}
+
+/* ─── GitHub Admonitions (> [!NOTE] 等) ─── */
+.md-body .admonition {
+  border-left-width: 4px;
+  border-radius: 0;
+  padding: 10px 14px;
+  background: var(--bg-surface);
+}
+.md-body .admonition-title {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 0.9em;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+.md-body .admonition-note { border-color: var(--accent); }
+.md-body .admonition-note .admonition-title { color: var(--accent); }
+.md-body .admonition-tip { border-color: #3fb950; }
+.md-body .admonition-tip .admonition-title { color: #3fb950; }
+.md-body .admonition-important { border-color: #a371f7; }
+.md-body .admonition-important .admonition-title { color: #a371f7; }
+.md-body .admonition-warning { border-color: #d29922; }
+.md-body .admonition-warning .admonition-title { color: #d29922; }
+.md-body .admonition-caution { border-color: #f85149; }
+.md-body .admonition-caution .admonition-title { color: #f85149; }
+
+/* ─── 脚注 ─── */
+.md-body .footnote-ref { font-size: 0.8em; vertical-align: super; }
+.md-body .footnotes { font-size: 0.9em; color: var(--text-secondary); border-top: 1px solid var(--border-subtle); margin-top: 2em; padding-top: 1em; }
+
+/* ─── details/summary ─── */
+.md-body details {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 12px;
+  margin: 0.8em 0;
+}
+.md-body summary {
+  cursor: pointer;
+  font-weight: 600;
+  color: var(--text);
+}
+.md-body details[open] summary {
+  margin-bottom: 8px;
+}
+
+/* ─── mark (ハイライト) ─── */
+.md-body mark {
+  background: rgba(255, 200, 0, 0.3);
+  padding: 1px 3px;
+  border-radius: 2px;
+}
+
+/* ─── 翻訳済みテキスト + ツールチップ (本文 translate) ─── */
+[data-original-text] {
+  cursor: help;
+}
+#translateTooltip {
+  position: fixed;
+  z-index: 500;
+  max-width: 420px;
+  max-height: 180px;
+  overflow-y: auto;
+  padding: 8px 12px;
+  background: var(--toast-bg);
+  color: #eee;
+  border: 1px solid var(--toast-border);
+  border-radius: 6px;
+  font-size: 12.5px;
+  line-height: 1.6;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
+  white-space: pre-wrap;
+  word-break: break-word;
+  pointer-events: none;
+}
+
+/* 開いたファイル内で検索クエリにジャンプした時の一時ハイライト */
+.search-jump-highlight {
+  position: absolute;
+  background: rgba(255, 200, 0, 0.35);
+  border-radius: 2px;
+  pointer-events: none;
+  z-index: 2;
+  animation: jump-fade 2.4s ease forwards;
+}
+@keyframes jump-fade {
+  0% { opacity: 0; }
+  10%, 70% { opacity: 1; }
+  100% { opacity: 0; }
+}

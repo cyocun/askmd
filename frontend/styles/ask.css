@@ -1,0 +1,293 @@
+/* ─────────── Ask パネル (Chat インライン, 複数可) ───────────
+   選択ブロックの直後に DOM 挿入されて本文の流れに乗る。
+   複数パネルが同時に存在可能 (それぞれ独立した session)。 */
+.ask-panel {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.18);
+  padding: 10px 14px 12px;
+  display: grid;
+  grid-template-rows: auto auto auto auto;
+  gap: 8px;
+  min-height: 0;
+  max-width: 780px;
+  margin: 14px auto 20px;
+}
+.ask-panel.floating {
+  position: fixed;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 480px;
+  max-width: calc(100vw - 24px);
+  max-height: min(480px, 70vh);
+  margin: 0;
+  z-index: 150;
+  grid-template-rows: auto auto 1fr auto;
+  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.38), 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+.ask-panel.floating .ask-log { overflow-y: auto; }
+@media (prefers-color-scheme: light) {
+  .ask-panel { box-shadow: 0 2px 10px rgba(0, 0, 0, 0.08); }
+  .ask-panel.floating { box-shadow: 0 14px 40px rgba(0, 0, 0, 0.14), 0 2px 8px rgba(0, 0, 0, 0.08); }
+}
+.ask-panel.active { border-color: var(--accent); }
+.ask-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  color: var(--text-faint);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.ask-spacer { flex: 1; }
+.ask-session-badge {
+  font-size: 10px;
+  color: var(--accent);
+  background: var(--accent-soft);
+  padding: 2px 8px;
+  border-radius: 10px;
+  text-transform: none;
+  letter-spacing: 0;
+}
+.ask-quote {
+  font-size: 12px;
+  color: var(--text-secondary);
+  border-left: 3px solid var(--accent);
+  padding: 3px 0 3px 10px;
+  max-height: 80px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.ask-log {
+  min-height: 0;
+  display: grid;
+  gap: 10px;
+  padding: 2px 2px;
+}
+.ask-log:empty { display: none; }
+
+/* LI の直後に panel を挿入すると panel は UL/OL の子になる。
+   親のインデントを打ち消してフル幅にし、list-style の影響も切る。 */
+:where(ul, ol) > .ask-panel {
+  list-style: none;
+  margin-left: 0;
+}
+
+/* ツール実行状況 (Read/Glob/Grep 等の呼び出しをチップで可視化) */
+.ask-tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.ask-tools:empty { display: none; }
+.ask-tool-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  font-size: 11px;
+  color: var(--text-secondary);
+  background: var(--bg-hover);
+  border: 1px solid var(--border-subtle);
+  padding: 2px 8px;
+  border-radius: 10px;
+}
+.ask-tool-name {
+  font-weight: 600;
+  color: var(--accent);
+}
+.ask-tool-arg {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 10.5px;
+  max-width: 360px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ask-turn {
+  display: grid;
+  gap: 8px;
+}
+/* ─ 共通メッセージ行 (バッジ + コンテンツ) ─ */
+.ask-msg {
+  display: grid;
+  grid-template-columns: 24px 1fr;
+  gap: 8px;
+  align-items: start;
+}
+/* ─ 共通バッジ (You / AI) ─ */
+.ask-badge {
+  width: 24px;
+  height: 24px;
+  line-height: 24px;
+  text-align: center;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #fff;
+  box-sizing: border-box;
+  margin-top: 1px;
+}
+.ask-badge-ai {
+  background: var(--bg-hover);
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
+  line-height: 22px;
+}
+/* ─ ユーザーメッセージ ─ */
+.ask-q-text {
+  font-size: 13px;
+  color: var(--text);
+  font-weight: 500;
+  padding: 4px 0;
+}
+.ask-a-body {
+  min-width: 0;
+  flex: 1;
+}
+.ask-a-flow {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.ask-a {
+  font-size: 13px;
+  color: var(--text);
+  white-space: pre-wrap;
+  line-height: 1.6;
+}
+.ask-a-status {
+  font-size: 11.5px;
+  color: var(--text-faint);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.ask-a-status:empty { display: none; }
+.ask-a-spinner {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border: 2px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.ask-a.loading .ask-a-status::after { content: none; }
+.ask-a.error .ask-a-status { display: none; }
+/* Ask パネル内の md-body: コンパクトに */
+.ask-a.md-body {
+  font-size: 13px;
+  max-width: none;
+  margin: 0;
+  position: static;
+  white-space: normal;
+  text-align: left;
+}
+.ask-a.md-body p { margin: 0.4em 0; }
+.ask-a.md-body p:first-child { margin-top: 0; }
+.ask-a.md-body p:last-child { margin-bottom: 0; }
+.ask-a.md-body h1, .ask-a.md-body h2,
+.ask-a.md-body h3, .ask-a.md-body h4 {
+  position: static;
+  font-size: 1em;
+  padding: 0;
+  margin: 0.6em 0 0.3em;
+  box-shadow: none;
+  border: none;
+}
+.ask-a.md-body pre { font-size: 12px; margin: 0.4em 0; }
+.ask-a.md-body blockquote { margin: 0.4em 0; }
+.ask-a.md-body ul, .ask-a.md-body ol { margin: 0.3em 0; }
+.ask-a.md-body .md-section { margin-top: 0; }
+.ask-a.md-body .md-section + .md-section { margin-top: 0.3em; }
+.ask-a.error { color: #e57373; }
+.ask-input-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+}
+.ask-input:disabled { opacity: 0.6; }
+.ask-send:disabled { opacity: 0.5; cursor: not-allowed; }
+@keyframes pulse { 0%, 100% { opacity: 0.3; } 50% { opacity: 1; } }
+
+/* ─────────── Ask 履歴バー ─────────── */
+.ask-history-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 5px 10px 5px 12px;
+  margin-bottom: 6px;
+  background: var(--bg-hover);
+  border: 1px dashed var(--border-subtle);
+  border-radius: 6px;
+  font-size: 11.5px;
+  color: var(--text-faint);
+}
+.ask-history-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.ask-history-label::before {
+  content: '↺';
+  font-size: 12px;
+  opacity: 0.75;
+}
+.ask-history-clear {
+  padding: 2px 8px;
+  background: transparent;
+  color: var(--text-faint);
+  border: 1px solid var(--border-subtle);
+  border-radius: 999px;
+  font-size: 11px;
+  cursor: pointer;
+  font-family: inherit;
+  transition: color 0.12s ease, border-color 0.12s ease;
+}
+.ask-history-clear:hover {
+  color: #c94b4b;
+  border-color: #c94b4b;
+}
+.ask-turn.history { opacity: 0.78; }
+.ask-turn.history .ask-badge { background: var(--bg-hover); color: var(--text-faint); }
+.ask-turn.history .ask-badge-ai { background: var(--bg-hover); color: var(--text-faint); }
+
+/* ─────────── Ask テンプレートチップ ─────────── */
+.ask-templates {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-top: 1px solid var(--border-subtle);
+}
+.ask-templates-label {
+  font-size: 11px;
+  color: var(--text-faint);
+  margin-right: 4px;
+}
+.ask-template-chip {
+  padding: 3px 9px;
+  background: var(--bg-hover);
+  color: var(--text);
+  border: 1px solid var(--border-subtle);
+  border-radius: 999px;
+  font-size: 11.5px;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.12s ease;
+}
+.ask-template-chip:hover {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--accent);
+}

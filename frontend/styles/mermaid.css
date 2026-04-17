@@ -1,0 +1,70 @@
+/* ─────────── Mermaid ダイアグラム ─────────── */
+.mermaid-wrap {
+  position: relative;
+  margin: 0.8em 0;
+  z-index: 1;
+}
+.mermaid-expand {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 26px;
+  height: 26px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--bg-surface);
+  color: var(--text-faint);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 0.15s;
+  z-index: 4;
+}
+.mermaid-wrap:hover .mermaid-expand { opacity: 1; }
+.mermaid-expand:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+.mermaid-expand svg {
+  width: 14px;
+  height: 14px;
+}
+
+/* フルスクリーン表示 */
+#mermaidFullscreen {
+  position: fixed;
+  inset: 0;
+  z-index: 400;
+  background: var(--bg);
+  display: grid;
+  place-items: center;
+  overflow: auto;
+  padding: 40px;
+  cursor: zoom-out;
+}
+#mermaidFullscreen svg {
+  max-width: 100%;
+  max-height: 100%;
+}
+#mermaidFullscreenClose {
+  position: fixed;
+  top: 16px;
+  right: 16px;
+  z-index: 401;
+  width: 32px;
+  height: 32px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-surface);
+  color: var(--text);
+  font-size: 18px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+#mermaidFullscreenClose:hover {
+  background: var(--bg-hover);
+}
