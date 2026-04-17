@@ -1,8 +1,8 @@
-// 選択範囲の直下に浮く 4 ボタンのフロートバー。
-// 聞く / 訳す / 要約 / コピー を 1 クリックで実行。
+// 選択範囲の直下に浮く 5 ボタンのフロートバー。
+// 聞く / 訳す / 要約 / コピー / 編集 を 1 クリックで実行。
 // mousedown で preventDefault して選択が消えないようにしているのがポイント。
 import { createEl } from './dom';
-import { iconSparkle, iconTranslate, iconSummary, iconCopy } from './icons';
+import { iconSparkle, iconTranslate, iconSummary, iconCopy, iconPencil } from './icons';
 import { t } from './i18n';
 
 export interface SelectionBarActions {
@@ -10,6 +10,7 @@ export interface SelectionBarActions {
   onTranslate: () => void;
   onSummarize: () => void;
   onCopy: () => void;
+  onEdit: () => void;
   // 使用可能判定 (AI が繋がっているか)
   aiAvailable: () => boolean;
 }
@@ -54,11 +55,13 @@ export function createSelectionBar(
   const trBtn = makeBtn(iconTranslate(), t('selbar.translate'), actions.onTranslate);
   const sumBtn = makeBtn(iconSummary(), t('selbar.summarize'), actions.onSummarize, { aiOnly: true });
   const cpBtn = makeBtn(iconCopy(), t('selbar.copy'), actions.onCopy);
+  const editBtn = makeBtn(iconPencil(), t('selbar.edit'), actions.onEdit);
 
   bar.appendChild(askBtn);
   bar.appendChild(trBtn);
   bar.appendChild(sumBtn);
   bar.appendChild(cpBtn);
+  bar.appendChild(editBtn);
 
   (options?.parent || document.body).appendChild(bar);
 

@@ -5,6 +5,7 @@ import { createEl } from './dom';
 import { t } from './i18n';
 import { createSelectionBar } from './selection-bar';
 import { showLoading as tpLoading, showResult as tpResult, showError as tpError } from './translate-popover';
+import { openRangeEditor } from './block-editor';
 import { showToast } from './toast';
 import { state } from './state';
 import type { Ask, AskContext } from './ask';
@@ -148,6 +149,18 @@ export function createAskBridge(deps: AskBridgeDeps): AskBridge {
       const text = window.getSelection()?.toString() || '';
       if (!text) return;
       navigator.clipboard.writeText(text).then(() => showToast(t('toast.copied'))).catch(() => {});
+    },
+    onEdit: () => {
+      const sel = window.getSelection();
+      if (!sel || sel.rangeCount === 0 || !state.currentFile) return;
+      const text = sel.toString();
+      if (!text.trim()) {
+        showToast(t('block.noRange'));
+        return;
+      }
+      const anchor = anchorBlockOf(sel.getRangeAt(0));
+      selectionBar.hide();
+      void openRangeEditor(state.currentFile, text, anchor);
     },
   });
 

@@ -107,6 +107,11 @@ const translations: Record<string, Record<Lang, string>> = {
   'selbar.translate': { ja: '訳す', en: 'Translate' },
   'selbar.summarize': { ja: '要約', en: 'Summarize' },
   'selbar.copy': { ja: 'コピー', en: 'Copy' },
+  'selbar.edit': { ja: '編集', en: 'Edit' },
+  // ─ Block editor (選択範囲のブロックだけを編集) ─
+  'block.editing': { ja: 'このブロックだけ編集', en: 'Editing this block' },
+  'block.hint': { ja: '⌘S で保存 / Esc でキャンセル', en: '⌘S to save / Esc to cancel' },
+  'block.noRange': { ja: 'この場所は編集できません', en: 'This area isn\u2019t editable' },
   // ─ Context menu (tree right-click) ─
   'ctx.open': { ja: '開く', en: 'Open' },
   'ctx.preview': { ja: 'プレビュー (Space)', en: 'Quick Look (Space)' },
