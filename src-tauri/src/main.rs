@@ -2,12 +2,15 @@
 
 mod commands;
 mod menu;
+mod path_env;
 
 use commands::ai::ActiveProvider;
 use commands::cli::InitialPath;
 use commands::watch::WatcherState;
 
 fn main() {
+    path_env::fix();
+
     // CLI 引数: `askmd ~/path/to/repo` で起動時にディレクトリを開く
     let initial = std::env::args().nth(1).and_then(|arg| {
         let expanded = if let Some(stripped) = arg.strip_prefix("~/") {
