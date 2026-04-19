@@ -50,7 +50,7 @@
         "description": "Markdown Document"
       },
       {
-        "ext": [],
+        "ext": ["askmdfolder"],
         "name": "Folder",
         "contentTypes": ["public.folder"],
         "role": "Viewer",
