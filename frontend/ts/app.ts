@@ -740,7 +740,43 @@ document.getElementById('tbChanges')?.addEventListener('click', () => {
   void showChangedFiles();
 });
 
-// ─── フォルダ D&D (Tauri の OS ネイティブ drag-drop イベント) ───
+// ─── フォルダ / md ファイル D&D ───
+// 1. 何も開いていない window: 現在の window に読み込む
+// 2. .md 直投下で親ディレクトリが現在の root と同じ: その場でファイルを開く
+// 3. それ以外 (別ディレクトリ / 別 root の .md): 新インスタンスを spawn して新ウィンドウとして開く
+// tauri://drag-drop (アプリ window へのドロップ) と askmd://external-open (Dock / Finder "Open With") の両方で使う
+async function handleExternalOpen(paths: string[]): Promise<void> {
+  if (!paths || paths.length === 0) return;
+  const first = paths[0];
+  const isMd = /\.md$/i.test(first);
+  const parent = (() => {
+    const slash = Math.max(first.lastIndexOf('/'), first.lastIndexOf('\\'));
+    return slash > 0 ? first.slice(0, slash) : null;
+  })();
+  const targetRoot = isMd ? parent : first;
+
+  if (!state.currentRoot) {
+    if (isMd && parent) {
+      await loadRoot(parent);
+      await openFile(first);
+    } else {
+      await loadRoot(first);
+    }
+    return;
+  }
+
+  if (targetRoot && targetRoot === state.currentRoot.path) {
+    if (isMd) await openFile(first);
+    return;
+  }
+
+  try {
+    await invoke('open_new_instance', { path: first });
+  } catch (e) {
+    showToast(t('toast.scanFail', String(e)));
+  }
+}
+
 void listen('tauri://drag-enter', () => {
   dropOverlay.hidden = false;
 });
@@ -750,9 +786,11 @@ void listen('tauri://drag-leave', () => {
 void listen('tauri://drag-drop', async (ev) => {
   dropOverlay.hidden = true;
   const paths = (ev.payload as { paths?: string[] } | undefined)?.paths;
-  if (!paths || paths.length === 0) return;
-  // 最初のパスをルートとして開く (ディレクトリを想定)
-  await loadRoot(paths[0]);
+  await handleExternalOpen(paths ?? []);
+});
+// macOS: Dock アイコンへのドロップや Finder "Open With" からのファイル受領
+void listen<string[]>('askmd://external-open', async (ev) => {
+  await handleExternalOpen(ev.payload ?? []);
 });
 
 filterInput.addEventListener('input', () => {
@@ -1127,9 +1165,15 @@ langBtn.addEventListener('click', () => {
     const initial = (await invoke('get_initial_path')) as string | null;
     if (initial) {
       await loadRoot(initial);
+      // CLI 引数が .md ファイルだった場合、loadRoot 後にそのファイルを開く
+      const initialFile = (await invoke('get_initial_file')) as string | null;
+      if (initialFile) await openFile(initialFile);
     } else {
       await renderRecentDirs();
     }
+    // Dock/Finder からの "Open With" がリスナ登録前に届いていた場合に備えてドレイン
+    const pending = (await invoke('take_pending_opens')) as string[];
+    if (pending.length > 0) await handleExternalOpen(pending);
   } catch (e) {
     console.error('init failed:', e);
   }

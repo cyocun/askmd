@@ -5,34 +5,54 @@ mod menu;
 mod path_env;
 
 use commands::ai::ActiveProvider;
-use commands::cli::InitialPath;
+use commands::cli::{InitialFile, InitialPath, PendingOpens};
 use commands::watch::WatcherState;
-use tauri::Manager;
+use tauri::{Emitter, Manager};
+
+/// CLI 引数 (ディレクトリ or .md ファイル) を解決し、(ルートディレクトリ, 起動時に開くファイル) を返す。
+fn resolve_initial(arg: &str) -> (Option<String>, Option<String>) {
+    let expanded = if let Some(stripped) = arg.strip_prefix("~/") {
+        dirs::home_dir()
+            .map(|h| h.join(stripped))
+            .unwrap_or_else(|| std::path::PathBuf::from(arg))
+    } else {
+        std::path::PathBuf::from(arg)
+    };
+    if expanded.is_dir() {
+        (Some(expanded.to_string_lossy().into_owned()), None)
+    } else if expanded.is_file()
+        && expanded
+            .extension()
+            .and_then(|s| s.to_str())
+            .map(|s| s.eq_ignore_ascii_case("md"))
+            .unwrap_or(false)
+    {
+        let root = expanded
+            .parent()
+            .map(|p| p.to_string_lossy().into_owned());
+        let file = expanded.to_string_lossy().into_owned();
+        (root, Some(file))
+    } else {
+        (None, None)
+    }
+}
 
 fn main() {
     path_env::fix();
 
-    // CLI 引数: `askmd ~/path/to/repo` で起動時にディレクトリを開く
-    let initial = std::env::args().nth(1).and_then(|arg| {
-        let expanded = if let Some(stripped) = arg.strip_prefix("~/") {
-            dirs::home_dir()
-                .map(|h| h.join(stripped))
-                .unwrap_or_else(|| std::path::PathBuf::from(&arg))
-        } else {
-            std::path::PathBuf::from(&arg)
-        };
-        if expanded.is_dir() {
-            Some(expanded.to_string_lossy().into_owned())
-        } else {
-            None
-        }
-    });
+    // CLI 引数: `askmd ~/path/to/repo` または `askmd ~/path/to/file.md`
+    let (initial_root, initial_file) = std::env::args()
+        .nth(1)
+        .map(|arg| resolve_initial(&arg))
+        .unwrap_or((None, None));
 
     tauri::Builder::default()
         .plugin(tauri_plugin_window_state::Builder::new().build())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
-        .manage(InitialPath(initial))
+        .manage(InitialPath(initial_root))
+        .manage(InitialFile(initial_file))
+        .manage(PendingOpens::new())
         .manage(WatcherState::new())
         .manage(ActiveProvider::new())
         .invoke_handler(tauri::generate_handler![
@@ -52,6 +72,9 @@ fn main() {
             commands::search::search_markdown,
             commands::watch::start_watch,
             commands::cli::get_initial_path,
+            commands::cli::get_initial_file,
+            commands::cli::take_pending_opens,
+            commands::cli::open_new_instance,
             commands::translate::translate_text,
             commands::recent::get_recent_dirs,
             commands::recent::add_recent_dir,
@@ -103,6 +126,27 @@ fn main() {
                     if let Some(window) = app_handle.get_webview_window("main") {
                         let _ = window.show();
                         let _ = window.set_focus();
+                    }
+                }
+            }
+            // Dock アイコンや Finder "Open With" からのファイル受け取り (macOS)。
+            // フロント側で「現在の root と同じなら単に open、違うなら新インスタンス起動」を判断させる。
+            if let tauri::RunEvent::Opened { urls } = event {
+                let paths: Vec<String> = urls
+                    .iter()
+                    .filter_map(|u| u.to_file_path().ok())
+                    .map(|p| p.to_string_lossy().into_owned())
+                    .collect();
+                if !paths.is_empty() {
+                    // JS 未ロードでも取りこぼさないようキューにも積む (frontend が init 時に drain)
+                    let pending = app_handle.state::<PendingOpens>();
+                    for p in &paths {
+                        pending.push(p.clone());
+                    }
+                    if let Some(window) = app_handle.get_webview_window("main") {
+                        let _ = window.show();
+                        let _ = window.set_focus();
+                        let _ = window.emit("askmd://external-open", paths);
                     }
                 }
             }
