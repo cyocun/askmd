@@ -7,6 +7,7 @@ mod path_env;
 use commands::ai::ActiveProvider;
 use commands::cli::InitialPath;
 use commands::watch::WatcherState;
+use tauri::Manager;
 
 fn main() {
     path_env::fix();
@@ -64,6 +65,14 @@ fn main() {
         ])
         .menu(|handle| menu::build(handle))
         .on_menu_event(menu::handle_event)
+        .on_window_event(|window, event| {
+            // ウィンドウの閉じるボタンではアプリを終了せず、ウィンドウを隠すだけにする。
+            // macOS ネイティブ挙動 (Mail.app 等と同じ)。完全終了は Cmd+Q / メニュー経由。
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                api.prevent_close();
+                let _ = window.hide();
+            }
+        })
         .setup(|app| {
             let handle = app.handle().clone();
             // 起動 5 秒後に初回チェック、以降 6 時間周期
@@ -85,6 +94,17 @@ fn main() {
             });
             Ok(())
         })
-        .run(tauri::generate_context!())
-        .expect("error while running askmd");
+        .build(tauri::generate_context!())
+        .expect("error while building askmd")
+        .run(|app_handle, event| {
+            // Dock アイコン再クリック (macOS) で hide 済みウィンドウを復帰させる
+            if let tauri::RunEvent::Reopen { has_visible_windows, .. } = event {
+                if !has_visible_windows {
+                    if let Some(window) = app_handle.get_webview_window("main") {
+                        let _ = window.show();
+                        let _ = window.set_focus();
+                    }
+                }
+            }
+        });
 }
