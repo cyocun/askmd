@@ -1,6 +1,6 @@
 [package]
 name = "askmd"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 
 [build-dependencies]
@@ -20,3 +20,4 @@ tauri-plugin-updater = "2"
 reqwest = { version = "0.12", features = ["json"] }
 urlencoding = "2"
 similar = "2"
+base64 = "0.22"

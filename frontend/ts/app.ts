@@ -30,6 +30,11 @@ interface AiProviderInfo {
 interface RecentDir {
   path: string;
   name: string;
+  icon?: string | null;
+}
+
+function shortPath(p: string): string {
+  return p.replace(/^\/Users\/[^/]+\//, '~/');
 }
 
 // ─── スクロール位置永続化 ───
@@ -927,14 +932,27 @@ async function renderRecentDirs(): Promise<void> {
     emptyState.appendChild(heading);
     const ul = createEl('ul', { class: 'recent-list' });
     for (const dir of recent) {
+      const icon = dir.icon
+        ? createEl('img', { class: 'recent-item-icon', src: dir.icon, alt: '' })
+        : createEl(
+            'span',
+            { class: 'recent-item-icon recent-item-icon-placeholder' },
+            (dir.name.charAt(0) || '?').toUpperCase(),
+          );
+      const text = createEl(
+        'div',
+        { class: 'recent-item-text' },
+        createEl('span', { class: 'recent-item-name' }, dir.name),
+        createEl('span', { class: 'recent-item-path' }, shortPath(dir.path)),
+      );
       const btn = createEl(
         'button',
         {
           class: 'recent-item',
           onClick: () => void loadRoot(dir.path),
         },
-        createEl('span', { class: 'recent-item-name' }, dir.name),
-        createEl('span', { class: 'recent-item-path' }, dir.path),
+        icon,
+        text,
       );
       ul.appendChild(createEl('li', {}, btn));
     }
