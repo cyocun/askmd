@@ -111,8 +111,8 @@ askmd は「読むが主、書くは補助」。新規作成も画像差し込�
 - 翻訳機能 (`Cmd+Shift+T`、Google Translate 非公式 API、API キー不要)
 - 最近開いたディレクトリの永続化 (起動画面に最大 5 件表示)
 - `.md` ファイルアソシエーション (Finder からダブルクリックで開く)
-- 自動アップデータ (`tauri-plugin-updater`、起動 5 秒後 + 6 時間周期、サイレント更新) — ただし初回リリースは未実施。`tauri.conf.json` の `pubkey` を埋め、GitHub Secrets に `TAURI_SIGNING_PRIVATE_KEY` / `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` を登録してから `v*` タグで起動
-- GitHub Actions リリースワークフロー (`v*` タグで macOS arm64 + x86_64 の .dmg + `latest.json` をドラフト作成、公開は手動)
+- 自動アップデータ (`tauri-plugin-updater`、起動 5 秒後 + 6 時間周期、サイレント更新)。`tauri.conf.json` の `pubkey` と GitHub Secrets (`TAURI_SIGNING_PRIVATE_KEY` / `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`) で署名
+- GitHub Actions リリースワークフロー (`v*` タグで Apple Silicon (aarch64) 向けの .dmg + `.sig` + `latest.json` を自動生成して即公開)。Intel Mac は対象外 — matrix で arm64+x64 を並列ビルドすると `tauri-action` が各 job 内で両 arch の署名を見つけられず `latest.json` の生成を skip してしまうため、`runs-on: macos-14` 固定で native (arm64) 単一ビルドに割り切っている。`verify-updater-json` job で `latest.json` 欠落を必ず検出
 
 ### Phase 2
 - Vite バンドラ導入 (vendor/ 全廃止、npm パッケージ化、`@tauri-apps/api` 正規 import)

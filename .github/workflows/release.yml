@@ -10,42 +10,24 @@ permissions:
 
 jobs:
   build:
-    strategy:
-      fail-fast: false
-      max-parallel: 1
-      matrix:
-        include:
-          - platform: macos-latest
-            target: aarch64-apple-darwin
-          - platform: macos-latest
-            target: x86_64-apple-darwin
-
-    runs-on: ${{ matrix.platform }}
-
+    runs-on: macos-14
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: npm
 
-      - name: Install Rust (stable)
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: ${{ matrix.target }}
+      - uses: dtolnay/rust-toolchain@stable
 
-      - name: Rust cache
-        uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri
 
-      - name: Install npm dependencies
-        run: npm ci
+      - run: npm ci
 
-      - name: Build Tauri app
-        uses: tauri-apps/tauri-action@v0
+      - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
@@ -54,6 +36,23 @@ jobs:
           tagName: ${{ github.ref_name }}
           releaseName: "askmd ${{ github.ref_name }}"
           releaseBody: "See [CHANGELOG](https://github.com/cyocun/askmd/blob/main/CHANGELOG.md) for details."
-          releaseDraft: true
+          releaseDraft: false
           prerelease: false
-          args: --target ${{ matrix.target }}
+
+  verify-updater-json:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ensure latest.json is attached to the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          gh release view "$TAG" --repo "$REPO" --json assets --jq '.assets[].name' > /tmp/assets.txt
+          if ! grep -q '^latest.json$' /tmp/assets.txt; then
+            echo "latest.json was not produced by tauri-action; check signing keys." >&2
+            cat /tmp/assets.txt >&2
+            exit 1
+          fi
