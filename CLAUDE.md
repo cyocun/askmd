@@ -111,8 +111,8 @@ askmd は「読むが主、書くは補助」。新規作成も画像差し込�
 - 翻訳機能 (`Cmd+Shift+T`、Google Translate 非公式 API、API キー不要)
 - 最近開いたディレクトリの永続化 (起動画面に最大 5 件表示)
 - `.md` ファイルアソシエーション (Finder からダブルクリックで開く)
-- 自動アップデータ (`tauri-plugin-updater`、起動 5 秒後 + 6 時間周期)
-- GitHub Actions リリースワークフロー (`v*` タグで macOS .dmg ビルド)
+- 自動アップデータ (`tauri-plugin-updater`、起動 5 秒後 + 6 時間周期、サイレント更新) — ただし初回リリースは未実施。`tauri.conf.json` の `pubkey` を埋め、GitHub Secrets に `TAURI_SIGNING_PRIVATE_KEY` / `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` を登録してから `v*` タグで起動
+- GitHub Actions リリースワークフロー (`v*` タグで macOS arm64 + x86_64 の .dmg + `latest.json` をドラフト作成、公開は手動)
 
 ### Phase 2
 - Vite バンドラ導入 (vendor/ 全廃止、npm パッケージ化、`@tauri-apps/api` 正規 import)
@@ -145,7 +145,7 @@ askmd は「読むが主、書くは補助」。新規作成も画像差し込�
 
 ### 後回し / 検討中
 - macOS コード署名 / Notarization
-- Homebrew Cask (`brew install --cask cyocun/tap/askmd`、ワークフロー・スクリプトは実装済み)
+- Homebrew Cask (`brew install --cask cyocun/tap/askmd`、`update-homebrew.yml` は書いてあるが `homebrew-tap` repo 未整備のため現状 `workflow_dispatch` のみで封印中)
 - ターミナル連携モード (`Cmd+Shift+L` → iTerm/Terminal で `claude` 対話)
 - Claude Desktop 連携 (deep link でのプロンプトプリフィル API が来たら)
 - ウィンドウタブ (`Cmd+T`、複数フォルダ同時オープン)

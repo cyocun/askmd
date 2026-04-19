@@ -30,7 +30,7 @@
       "endpoints": [
         "https://github.com/cyocun/askmd/releases/latest/download/latest.json"
       ],
-      "pubkey": ""
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDc0NEQ2MzE3QzczREZBMjgKUldRbytqM0hGMk5OZEpLKzdCeGxUUlM3LzZ0MXFIOTdnK3o3WUE3TjJzNjh3WUlaVUZuRWk2ZGkK"
     }
   },
   "bundle": {
