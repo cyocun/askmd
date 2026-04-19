@@ -11,37 +11,52 @@ import { state } from './state';
 import type { Ask, AskContext } from './ask';
 import { invoke } from '@tauri-apps/api/core';
 
+const MD_BODY = 'md-body';
+const MD_SECTION = 'md-section';
+
 // 引用対象となる "最も内側の" md ブロック。UL/OL 自体は候補外 (内部の LI/P が優先)。
-// endContainer は triple-click や shift 選択で次ブロック先頭に飛ぶため startContainer を基準。
 const INLINE_BLOCK_TAGS = new Set([
   'P', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6',
   'LI', 'PRE', 'BLOCKQUOTE', 'TABLE', 'HR',
 ]);
 
-export function anchorBlockOf(range: Range): HTMLElement | null {
-  let node: Node | null = range.startContainer;
-  if (node.nodeType !== Node.ELEMENT_NODE) node = node.parentNode;
-  let el = node as HTMLElement | null;
+function elementOf(node: Node): HTMLElement | null {
+  const n = node.nodeType === Node.ELEMENT_NODE ? node : node.parentNode;
+  return n as HTMLElement | null;
+}
+
+// promoteToTop: block 候補が見つかる前に md-body/md-section の直下に到達したら、
+// その要素 (UL/OL など) を返す。Ask panel は親の兄弟として挿入しないと range の
+// 内側に入り込んで getClientRects() の矩形が panel 内まで伸びる。
+function findBlock(from: Node, promoteToTop: boolean): HTMLElement | null {
+  let el = elementOf(from);
   while (el) {
-    if (el.classList?.contains('md-body')) return null;
+    if (el.classList.contains(MD_BODY)) return null;
     if (INLINE_BLOCK_TAGS.has(el.tagName)) return el;
-    el = el.parentElement;
+    const parent = el.parentElement;
+    if (promoteToTop && (parent?.classList.contains(MD_BODY) || parent?.classList.contains(MD_SECTION))) {
+      return el;
+    }
+    el = parent;
   }
   return null;
+}
+
+// 引用/編集対象として最も内側の block。endContainer は triple-click / shift 選択で
+// 次ブロック先頭に飛ぶため startContainer を基準にする。
+export function anchorBlockOf(range: Range): HTMLElement | null {
+  return findBlock(range.startContainer, false);
+}
+
+// Ask panel 挿入用の anchor。range 全体を覆う要素を返し、その afterend に panel を置く。
+export function askAnchorOf(range: Range): HTMLElement | null {
+  return findBlock(range.commonAncestorContainer, true);
 }
 
 // 選択 range の各行矩形を .md-body 相対座標の overlay として描画。
 // 質問中の引用元を視覚的に残すため。返り値は cleanup (overlay 除去)。
 export function highlightRange(range: Range): () => void {
-  let mdBody: HTMLElement | null = null;
-  let n: Node | null = range.startContainer;
-  while (n) {
-    if (n.nodeType === Node.ELEMENT_NODE && (n as HTMLElement).classList?.contains('md-body')) {
-      mdBody = n as HTMLElement;
-      break;
-    }
-    n = n.parentNode;
-  }
+  const mdBody = elementOf(range.startContainer)?.closest(`.${MD_BODY}`) as HTMLElement | null;
   if (!mdBody) return () => {};
 
   const bodyRect = mdBody.getBoundingClientRect();
@@ -99,7 +114,7 @@ export function createAskBridge(deps: AskBridgeDeps): AskBridge {
     if (!state.aiAvailable) { showToast(t('toast.noProvider')); return; }
     const ctx = currentCtx();
     if (!ctx) { showToast(t('toast.openFile')); return; }
-    const anchor = anchorBlockOf(range);
+    const anchor = askAnchorOf(range);
     deps.ask.open(selection, ctx, anchor, {
       onOpen: () => highlightRange(range),
       prefill: opts?.prefill,

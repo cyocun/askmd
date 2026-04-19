@@ -82,7 +82,7 @@ export function createAsk(deps: AskDeps): Ask {
     options?: AskOpenOptions,
   ): void => {
     prunePanels();
-    const cleanup = options?.onOpen ? options.onOpen() || undefined : undefined;
+    let cleanup: (() => void) | undefined;
     const handle = buildPanel(
       selection,
       ctx,
@@ -109,6 +109,9 @@ export function createAsk(deps: AskDeps): Ask {
     panels.push(handle);
     lastActive = handle;
     for (const p of panels) p.el.classList.toggle('active', p === handle);
+
+    // onOpen は挿入後。getClientRects() が panel で押し下げられた後の位置を拾う必要があるため。
+    if (options?.onOpen) cleanup = options.onOpen() || undefined;
 
     handle.el.scrollIntoView({ block: 'center', behavior: 'smooth' });
     handle.input.focus({ preventScroll: true });
@@ -285,8 +288,13 @@ function buildPanel(
   onClose: (h: PanelHandle) => void,
   onActivate: (h: PanelHandle) => void,
 ): PanelHandle {
-  // 履歴を先に読み込んで sessionId を復元
-  const history = ctx.path ? loadHistory(ctx.path) : null;
+  // 履歴と sessionId の扱い:
+  // - 選択なし (ファイル全体への質問) → 履歴を復元し session を継続する
+  // - 選択あり (選択バーの「聞く」「要約」) → 新しい切り口なので毎回新規。
+  //   過去履歴を resume すると Claude が前の文脈で答えて引用が無視される。
+  //   保存もしないので、別話題で selection を質問しても file 履歴を汚さない。
+  const useHistory = !selection && !!ctx.path;
+  const history = useHistory ? loadHistory(ctx.path) : null;
   let sessionId: string | null = history?.sessionId ?? null;
 
   const badge = createEl('span', { class: 'ask-session-badge' }, t('ask.continuing'));
@@ -446,7 +454,7 @@ function buildPanel(
           // done.message には result 全文が入ることがある (stream text が空だった場合の保険)
           turn.finalize(ev.message && !turn.hasText() ? ev.message : undefined);
           // 履歴に保存 (パスがあれば)
-          if (ctx.path) {
+          if (useHistory) {
             const answer = turn.getAnswerText();
             if (question && answer) {
               pushTurn(ctx.path, { q: question, a: answer, ts: Date.now() }, sessionId);
