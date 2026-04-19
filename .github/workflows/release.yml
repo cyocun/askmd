@@ -13,6 +13,36 @@ jobs:
     runs-on: macos-14
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # 前のタグ参照のため全履歴が必要
+
+      - name: Build release notes from commit log
+        id: notes
+        env:
+          TAG: ${{ github.ref_name }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          PREV_TAG=$(git tag --sort=-v:refname | grep -v "^${TAG}$" | head -n1 || true)
+          if [ -z "$PREV_TAG" ]; then
+            RANGE="HEAD"
+            HEADER="## Changes"
+          else
+            RANGE="${PREV_TAG}..HEAD"
+            HEADER="## Changes since ${PREV_TAG}"
+          fi
+          {
+            echo "body<<NOTES_EOF"
+            echo "$HEADER"
+            echo ""
+            git log --pretty=format:"- %s (%h)" "$RANGE"
+            echo ""
+            echo ""
+            if [ -n "$PREV_TAG" ]; then
+              echo "**Full diff**: https://github.com/${REPO}/compare/${PREV_TAG}...${TAG}"
+            fi
+            echo "NOTES_EOF"
+          } >> "$GITHUB_OUTPUT"
 
       - uses: actions/setup-node@v4
         with:
@@ -35,7 +65,7 @@ jobs:
         with:
           tagName: ${{ github.ref_name }}
           releaseName: "askmd ${{ github.ref_name }}"
-          releaseBody: "See [CHANGELOG](https://github.com/cyocun/askmd/blob/main/CHANGELOG.md) for details."
+          releaseBody: ${{ steps.notes.outputs.body }}
           releaseDraft: false
           prerelease: false
 
