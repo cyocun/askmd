@@ -1,7 +1,8 @@
+use crate::commands::cli::{create_new_window, WindowInits};
 use tauri::menu::{
     AboutMetadataBuilder, Menu, MenuBuilder, MenuItemBuilder, PredefinedMenuItem, SubmenuBuilder,
 };
-use tauri::{AppHandle, Emitter, Wry};
+use tauri::{AppHandle, Emitter, Manager, Wry};
 
 fn is_ja() -> bool {
     std::env::var("LANG")
@@ -41,11 +42,20 @@ pub fn build(handle: &AppHandle) -> Result<Menu<Wry>, tauri::Error> {
         .build()?;
 
     // File
+    let new_window = MenuItemBuilder::with_id("new_window", l!("新しいウインドウ", "New Window"))
+        .accelerator("CmdOrCtrl+N")
+        .build(handle)?;
+    let new_tab = MenuItemBuilder::with_id("new_tab", l!("新しいタブ", "New Tab"))
+        .accelerator("CmdOrCtrl+T")
+        .build(handle)?;
     let open_dir = MenuItemBuilder::with_id("open_dir", l!("ディレクトリを開く…", "Open Directory…"))
         .accelerator("CmdOrCtrl+O")
         .build(handle)?;
     let close_window = PredefinedMenuItem::close_window(handle, Some(l!("ウインドウを閉じる", "Close Window")))?;
     let file_menu = SubmenuBuilder::new(handle, l!("ファイル", "File"))
+        .item(&new_window)
+        .item(&new_tab)
+        .item(&separator()?)
         .item(&open_dir)
         .item(&separator()?)
         .item(&close_window)
@@ -120,6 +130,12 @@ pub fn build(handle: &AppHandle) -> Result<Menu<Wry>, tauri::Error> {
 
 pub fn handle_event(handle: &AppHandle, event: tauri::menu::MenuEvent) {
     let id = event.id().0.as_str();
-    // フロントエンドに menu-action イベントとして転送
+    // 新規ウィンドウ / タブは Rust 側で完結させる (macOS の tabbing_identifier が OS 側でタブ化判断)。
+    if id == "new_window" || id == "new_tab" {
+        let inits = handle.state::<WindowInits>();
+        let _ = create_new_window(handle, None, &inits);
+        return;
+    }
+    // それ以外はフロントエンドに転送
     let _ = handle.emit("menu-action", id);
 }

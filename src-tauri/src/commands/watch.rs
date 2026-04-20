@@ -1,17 +1,21 @@
 use super::util;
 use notify::{Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Mutex;
 use tauri::{AppHandle, Emitter, State};
 
+/// ウィンドウラベル → watcher のマップ。
+/// ウィンドウ毎に異なる root を watch するため、ラベルで区別する。
+/// 同じラベルで再度 start_watch が呼ばれたら古い watcher は drop で置き換わる。
 pub struct WatcherState {
-    current: Mutex<Option<RecommendedWatcher>>,
+    watchers: Mutex<HashMap<String, RecommendedWatcher>>,
 }
 
 impl WatcherState {
     pub fn new() -> Self {
         Self {
-            current: Mutex::new(None),
+            watchers: Mutex::new(HashMap::new()),
         }
     }
 }
@@ -19,6 +23,7 @@ impl WatcherState {
 #[tauri::command]
 pub async fn start_watch(
     app: AppHandle,
+    window: tauri::Window,
     path: String,
     state: State<'_, WatcherState>,
 ) -> Result<(), String> {
@@ -29,6 +34,7 @@ pub async fn start_watch(
 
     let app_for_event = app.clone();
     let path_for_invalidate = path.clone();
+    let window_label = window.label().to_string();
     let mut watcher = notify::recommended_watcher(move |res: notify::Result<Event>| {
         let Ok(event) = res else {
             return;
@@ -48,7 +54,8 @@ pub async fn start_watch(
         if !changed.is_empty() {
             // tantivy インデックスをクリアして次回検索時に再構築
             super::search::invalidate_index(&path_for_invalidate);
-            let _ = app_for_event.emit("fs-changed", changed);
+            // 発火元ウィンドウにのみ通知 (別窓の state を汚さない)
+            let _ = app_for_event.emit_to(window_label.as_str(), "fs-changed", changed);
         }
     })
     .map_err(|e| e.to_string())?;
@@ -57,8 +64,7 @@ pub async fn start_watch(
         .watch(&target, RecursiveMode::Recursive)
         .map_err(|e| e.to_string())?;
 
-    // 前回の watcher を drop して置き換え、ルート切替に追従する。
-    let mut slot = state.current.lock().map_err(|e| e.to_string())?;
-    *slot = Some(watcher);
+    let mut map = state.watchers.lock().map_err(|e| e.to_string())?;
+    map.insert(window.label().to_string(), watcher);
     Ok(())
 }

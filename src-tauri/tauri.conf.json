@@ -1,6 +1,6 @@
 {
   "productName": "askmd",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "identifier": "com.cyocun.askmd",
   "build": {
     "devUrl": "http://localhost:1420",
@@ -21,7 +21,8 @@
         "minWidth": 600,
         "minHeight": 400,
         "titleBarStyle": "Overlay",
-        "hiddenTitle": true
+        "hiddenTitle": true,
+        "tabbingIdentifier": "askmd"
       }
     ]
   },

@@ -5,37 +5,9 @@ mod menu;
 mod path_env;
 
 use commands::ai::ActiveProvider;
-use commands::cli::{InitialFile, InitialPath, PendingOpens};
+use commands::cli::{resolve_initial, PendingOpens, WindowInits};
 use commands::watch::WatcherState;
 use tauri::{Emitter, Manager};
-
-/// CLI 引数 (ディレクトリ or .md ファイル) を解決し、(ルートディレクトリ, 起動時に開くファイル) を返す。
-fn resolve_initial(arg: &str) -> (Option<String>, Option<String>) {
-    let expanded = if let Some(stripped) = arg.strip_prefix("~/") {
-        dirs::home_dir()
-            .map(|h| h.join(stripped))
-            .unwrap_or_else(|| std::path::PathBuf::from(arg))
-    } else {
-        std::path::PathBuf::from(arg)
-    };
-    if expanded.is_dir() {
-        (Some(expanded.to_string_lossy().into_owned()), None)
-    } else if expanded.is_file()
-        && expanded
-            .extension()
-            .and_then(|s| s.to_str())
-            .map(|s| s.eq_ignore_ascii_case("md"))
-            .unwrap_or(false)
-    {
-        let root = expanded
-            .parent()
-            .map(|p| p.to_string_lossy().into_owned());
-        let file = expanded.to_string_lossy().into_owned();
-        (root, Some(file))
-    } else {
-        (None, None)
-    }
-}
 
 fn main() {
     path_env::fix();
@@ -46,12 +18,14 @@ fn main() {
         .map(|arg| resolve_initial(&arg))
         .unwrap_or((None, None));
 
+    let window_inits = WindowInits::new();
+    window_inits.set("main".to_string(), initial_root, initial_file);
+
     tauri::Builder::default()
         .plugin(tauri_plugin_window_state::Builder::new().build())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
-        .manage(InitialPath(initial_root))
-        .manage(InitialFile(initial_file))
+        .manage(window_inits)
         .manage(PendingOpens::new())
         .manage(WatcherState::new())
         .manage(ActiveProvider::new())
@@ -74,7 +48,7 @@ fn main() {
             commands::cli::get_initial_path,
             commands::cli::get_initial_file,
             commands::cli::take_pending_opens,
-            commands::cli::open_new_instance,
+            commands::cli::new_window,
             commands::translate::translate_text,
             commands::recent::get_recent_dirs,
             commands::recent::add_recent_dir,
@@ -89,11 +63,13 @@ fn main() {
         .menu(|handle| menu::build(handle))
         .on_menu_event(menu::handle_event)
         .on_window_event(|window, event| {
-            // ウィンドウの閉じるボタンではアプリを終了せず、ウィンドウを隠すだけにする。
-            // macOS ネイティブ挙動 (Mail.app 等と同じ)。完全終了は Cmd+Q / メニュー経由。
+            // main ウィンドウの閉じるボタンはアプリを終了せずに隠すだけ (Mail.app 流)。
+            // Dock 再クリックで復帰。二つ目以降のウィンドウ/タブは普通に閉じる。
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
-                api.prevent_close();
-                let _ = window.hide();
+                if window.label() == "main" {
+                    api.prevent_close();
+                    let _ = window.hide();
+                }
             }
         })
         .setup(|app| {
@@ -130,7 +106,7 @@ fn main() {
                 }
             }
             // Dock アイコンや Finder "Open With" からのファイル受け取り (macOS)。
-            // フロント側で「現在の root と同じなら単に open、違うなら新インスタンス起動」を判断させる。
+            // main window のフロントに渡し、「現在 root と同じなら open、違えば new_window」を判断させる。
             if let tauri::RunEvent::Opened { urls } = event {
                 let paths: Vec<String> = urls
                     .iter()

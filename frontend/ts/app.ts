@@ -17,6 +17,7 @@ import type { DiffInfo, FileChangeInfo, OutlineItem, TreeNode } from './types';
 import { state } from './state';
 import { invoke, convertFileSrc } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
+import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow';
 import '../styles/app.css';
 
 // ─── AI プロバイダー型 ───
@@ -743,7 +744,8 @@ document.getElementById('tbChanges')?.addEventListener('click', () => {
 // ─── フォルダ / md ファイル D&D ───
 // 1. 何も開いていない window: 現在の window に読み込む
 // 2. .md 直投下で親ディレクトリが現在の root と同じ: その場でファイルを開く
-// 3. それ以外 (別ディレクトリ / 別 root の .md): 新インスタンスを spawn して新ウィンドウとして開く
+// 3. それ以外 (別ディレクトリ / 別 root の .md): 同一プロセス内で新ウィンドウを生成
+//    (macOS の tabbing_identifier により OS 設定に従って自動でタブにもなる)
 // tauri://drag-drop (アプリ window へのドロップ) と askmd://external-open (Dock / Finder "Open With") の両方で使う
 async function handleExternalOpen(paths: string[]): Promise<void> {
   if (!paths || paths.length === 0) return;
@@ -771,7 +773,7 @@ async function handleExternalOpen(paths: string[]): Promise<void> {
   }
 
   try {
-    await invoke('open_new_instance', { path: first });
+    await invoke('new_window', { path: first });
   } catch (e) {
     showToast(t('toast.scanFail', String(e)));
   }
@@ -788,7 +790,8 @@ void listen('tauri://drag-drop', async (ev) => {
   const paths = (ev.payload as { paths?: string[] } | undefined)?.paths;
   await handleExternalOpen(paths ?? []);
 });
-// macOS: Dock アイコンへのドロップや Finder "Open With" からのファイル受領
+// macOS: Dock アイコンへのドロップや Finder "Open With" からのファイル受領。
+// Rust 側が main 窓にだけ emit するので、このリスナは全窓で付けて OK (発火するのは main のみ)。
 void listen<string[]>('askmd://external-open', async (ev) => {
   await handleExternalOpen(ev.payload ?? []);
 });
@@ -1171,9 +1174,12 @@ langBtn.addEventListener('click', () => {
     } else {
       await renderRecentDirs();
     }
-    // Dock/Finder からの "Open With" がリスナ登録前に届いていた場合に備えてドレイン
-    const pending = (await invoke('take_pending_opens')) as string[];
-    if (pending.length > 0) await handleExternalOpen(pending);
+    // Dock/Finder からの "Open With" がリスナ登録前に届いていた場合に備えてドレイン。
+    // PendingOpens はプロセス全体で 1 つなので main 窓だけが取り出す (二重オープン防止)。
+    if (getCurrentWebviewWindow().label === 'main') {
+      const pending = (await invoke('take_pending_opens')) as string[];
+      if (pending.length > 0) await handleExternalOpen(pending);
+    }
   } catch (e) {
     console.error('init failed:', e);
   }
