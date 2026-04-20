@@ -7,6 +7,7 @@ import { state } from './state';
 import { t } from './i18n';
 import { anchorBlockOf } from './ask-bridge';
 import { openRangeEditor } from './block-editor';
+import { decreaseFontScale, increaseFontScale, resetFontScale } from './font-scale';
 import type { Ask } from './ask';
 import type { AskBridge } from './ask-bridge';
 import type { Palette } from './palette';
@@ -48,6 +49,23 @@ export function installGlobalKeymap(deps: KeymapDeps): void {
     if (meta && ev.key.toLowerCase() === 'b') {
       ev.preventDefault();
       deps.toggleSidebar();
+      return;
+    }
+    // 本文の文字サイズ (Cmd+= / Cmd+- / Cmd+0)
+    // US キーボードでは Cmd++ が Cmd+= として届くので両方を拾う
+    if (meta && (ev.key === '=' || ev.key === '+')) {
+      ev.preventDefault();
+      increaseFontScale();
+      return;
+    }
+    if (meta && ev.key === '-') {
+      ev.preventDefault();
+      decreaseFontScale();
+      return;
+    }
+    if (meta && ev.key === '0') {
+      ev.preventDefault();
+      resetFontScale();
       return;
     }
     // 選択 → 鉛筆ボタン と同じ流れ。選択が無い時は無反応。

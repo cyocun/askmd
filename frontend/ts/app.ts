@@ -12,6 +12,7 @@ import { openListOverlay, relativeFromRoot } from './list-overlay';
 import { createTreeView } from './tree';
 import { addCopyButtons, extractTitle, parseFrontmatter, processAdmonitions, render, renderMermaidBlocks } from './renderer';
 import { currentTheme, initTheme } from './theme';
+import { initFontScale } from './font-scale';
 import { initLang, getLang, toggleLang, t } from './i18n';
 import type { DiffInfo, FileChangeInfo, OutlineItem, TreeNode } from './types';
 import { state } from './state';
@@ -1133,6 +1134,7 @@ window.addEventListener('beforeunload', () => {
 // ─── 起動 ───
 initLang();
 initTheme();
+initFontScale();
 
 // HTML 内の静的テキストを i18n 化
 filterInput.placeholder = t('filter.placeholder');

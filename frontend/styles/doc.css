@@ -220,6 +220,8 @@
   margin: 0 auto;
   position: relative; /* .ask-highlight を相対配置するため */
   overflow-wrap: break-word;
+  /* Cmd+= / Cmd+- で変える倍率。内部の em 指定はここを基準にスケールする */
+  font-size: calc(1em * var(--md-font-scale, 1));
 }
 /* 見出しごとのセクション。sticky の入れ替わりを可能にする */
 .md-section {}
@@ -303,7 +305,7 @@
 .md-body pre code {
   background: transparent;
   padding: 0;
-  font-size: 12.5px;
+  font-size: 0.93em;
   line-height: 1.55;
 }
 .md-body table {
