@@ -22,7 +22,13 @@ fn main() {
     window_inits.set("main".to_string(), initial_root, initial_file);
 
     tauri::Builder::default()
-        .plugin(tauri_plugin_window_state::Builder::new().build())
+        // window-state は main 窓だけ保存/復元。新タブ (win-*) の状態を覚えると
+        // Cmd+T で開くたび別サイズで復元され、タブグループの幅が暴れる。
+        .plugin(
+            tauri_plugin_window_state::Builder::new()
+                .with_filter(|label| label == "main")
+                .build(),
+        )
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(window_inits)

@@ -2,11 +2,18 @@
 #rightPane {
   grid-area: right;
   display: grid;
+  /* docHeader を display:none にしても docContent が "header" 行に繰り上がらないよう、
+     grid-template-areas で各要素の row を名前で固定する。 */
   grid-template-rows: auto 1fr;
+  grid-template-areas:
+    "header"
+    "content";
   min-width: 0;
   min-height: 0;
   overflow: hidden;
 }
+#docHeader { grid-area: header; }
+#docContent { grid-area: content; }
 
 #docHeader {
   padding: 8px 32px;
@@ -15,7 +22,10 @@
   gap: 4px;
   border-bottom: 1px solid var(--border-subtle);
 }
-#docHeader.empty { display: none; }
+/* .empty クラスは render 時に toggle されるが、初期状態 (HTML 直書きの空 header) は
+   クラスが付いていないので :empty でもカバーする。 */
+#docHeader.empty,
+#docHeader:empty { display: none; }
 .doc-heading {
   font-size: 15px;
   font-weight: 600;
@@ -217,11 +227,14 @@
 /* ─────────── Markdown 本文 ─────────── */
 .md-body {
   max-width: 780px;
-  margin: 0 auto;
+  margin: 40px auto 0;
   position: relative; /* .ask-highlight を相対配置するため */
   overflow-wrap: break-word;
   /* Cmd+= / Cmd+- で変える倍率。内部の em 指定はここを基準にスケールする */
   font-size: calc(1em * var(--md-font-scale, 1));
+  /* section 間の間隔は .md-section の padding-bottom に統一するため grid gap は 0 */
+  display: grid;
+  gap: 0;
 }
 /* 見出しごとのセクション。sticky の入れ替わりを可能にする */
 .md-section {}
@@ -247,10 +260,9 @@
   z-index: 10;
 }
 .md-section {
-  padding-top: 1.2em;
-}
-.md-section:first-child {
-  padding-top: 0;
+  /* +1px は sticky 見出しの「ぱっと外れる」境界を 1px 下げて、次のセクションへ
+     引き継がれる瞬間の空白を消すための調整 */
+  padding-bottom: calc(1.2em + 1px);
 }
 .md-body h1 { font-size: 1.8em; border-bottom: 1px solid var(--border-subtle); padding-bottom: 0.3em; }
 .md-body h2 { font-size: 1.4em; border-bottom: 1px solid var(--border-subtle); padding-bottom: 0.25em; }

@@ -21,8 +21,7 @@
         "minWidth": 600,
         "minHeight": 400,
         "titleBarStyle": "Overlay",
-        "hiddenTitle": true,
-        "tabbingIdentifier": "askmd"
+        "hiddenTitle": true
       }
     ]
   },

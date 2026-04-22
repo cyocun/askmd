@@ -51,14 +51,17 @@ pub fn build(handle: &AppHandle) -> Result<Menu<Wry>, tauri::Error> {
     let open_dir = MenuItemBuilder::with_id("open_dir", l!("ディレクトリを開く…", "Open Directory…"))
         .accelerator("CmdOrCtrl+O")
         .build(handle)?;
-    let close_window = PredefinedMenuItem::close_window(handle, Some(l!("ウインドウを閉じる", "Close Window")))?;
+    // Cmd+W はタブを閉じる (JS で処理)。最後のタブなら window を閉じる。
+    let close_tab = MenuItemBuilder::with_id("close_tab", l!("タブを閉じる", "Close Tab"))
+        .accelerator("CmdOrCtrl+W")
+        .build(handle)?;
     let file_menu = SubmenuBuilder::new(handle, l!("ファイル", "File"))
         .item(&new_window)
         .item(&new_tab)
         .item(&separator()?)
         .item(&open_dir)
         .item(&separator()?)
-        .item(&close_window)
+        .item(&close_tab)
         .build()?;
 
     // Edit
@@ -130,12 +133,11 @@ pub fn build(handle: &AppHandle) -> Result<Menu<Wry>, tauri::Error> {
 
 pub fn handle_event(handle: &AppHandle, event: tauri::menu::MenuEvent) {
     let id = event.id().0.as_str();
-    // 新規ウィンドウ / タブは Rust 側で完結させる (macOS の tabbing_identifier が OS 側でタブ化判断)。
-    if id == "new_window" || id == "new_tab" {
+    // 新規ウィンドウは Rust 側で完結。新規タブ / タブを閉じるは HTML 実装なので JS に転送。
+    if id == "new_window" {
         let inits = handle.state::<WindowInits>();
         let _ = create_new_window(handle, None, &inits);
         return;
     }
-    // それ以外はフロントエンドに転送
     let _ = handle.emit("menu-action", id);
 }

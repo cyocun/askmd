@@ -31,6 +31,9 @@ export interface KeymapDeps {
   translateCurrentDoc(): Promise<void>;
   schedulePreview(): void;
   openFile(path: string): Promise<void>;
+  /** タブ切替 (Cmd+1..9 / Cmd+Shift+[ / Cmd+Shift+]) */
+  switchTabByIndex(idx: number): void;
+  switchTabRelative(delta: number): void;
 }
 
 export function installGlobalKeymap(deps: KeymapDeps): void {
@@ -82,6 +85,23 @@ export function installGlobalKeymap(deps: KeymapDeps): void {
     if (meta && ev.key.toLowerCase() === 'o') {
       ev.preventDefault();
       void deps.pickAndLoad();
+      return;
+    }
+    // Cmd+1..9 で N 番目のタブへ (Safari / Chrome 流)
+    if (meta && !ev.shiftKey && /^[1-9]$/.test(ev.key)) {
+      ev.preventDefault();
+      deps.switchTabByIndex(parseInt(ev.key, 10) - 1);
+      return;
+    }
+    // Cmd+Shift+[ / Cmd+Shift+] で前後のタブ
+    if (meta && ev.shiftKey && (ev.key === '[' || ev.key === '{')) {
+      ev.preventDefault();
+      deps.switchTabRelative(-1);
+      return;
+    }
+    if (meta && ev.shiftKey && (ev.key === ']' || ev.key === '}')) {
+      ev.preventDefault();
+      deps.switchTabRelative(1);
       return;
     }
     if (meta && ev.key.toLowerCase() === 'p') {

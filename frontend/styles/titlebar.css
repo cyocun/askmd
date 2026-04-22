@@ -2,11 +2,16 @@
 #titleBar {
   grid-area: title;
   -webkit-app-region: drag;
-  background: var(--bg-surface);
+  background: var(--titlebar-top);
   display: flex;
   align-items: center;
   justify-content: flex-end;
   padding-right: 12px;
+}
+/* タブバー非表示 (= タブ 1 枚) のときだけ title bar に本文との仕切りを出す。
+   タブバーが出ているときは tabBar 側の border-bottom に任せる。 */
+body:not(.tabs-multiple) #titleBar {
+  border-bottom: 1px solid var(--titlebar-border);
 }
 /* ボタン・入力は drag 対象から除外 (通常クリックを可能にする) */
 button, input, textarea, select, a { -webkit-app-region: no-drag; }

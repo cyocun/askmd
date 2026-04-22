@@ -10,6 +10,7 @@ import { createFileOps } from './file-ops';
 import { installGlobalKeymap } from './keymap';
 import { openListOverlay, relativeFromRoot } from './list-overlay';
 import { createTreeView } from './tree';
+import { createTabs } from './tabs';
 import { addCopyButtons, extractTitle, parseFrontmatter, processAdmonitions, render, renderMermaidBlocks } from './renderer';
 import { currentTheme, initTheme } from './theme';
 import { initFontScale } from './font-scale';
@@ -228,6 +229,7 @@ interface OpenOptions {
 async function openFile(path: string, options?: OpenOptions): Promise<void> {
   state.currentFile = path;
   tree.setActive(path);
+  tabs.updateActive({ currentFile: path });
 
   const cached = state.cache.get(path);
   if (cached) {
@@ -569,7 +571,7 @@ function markChanges(node: TreeNode, changed: Map<string, number>): void {
 }
 
 // ─── ディレクトリ読み込み ───
-async function loadRoot(path: string): Promise<void> {
+async function loadRoot(path: string, opts?: { skipTabUpdate?: boolean }): Promise<void> {
   try {
     const node = (await invoke('scan_markdown_tree', { root: path })) as TreeNode | null;
     if (!node) {
@@ -579,6 +581,12 @@ async function loadRoot(path: string): Promise<void> {
     state.currentRoot = { path, tree: node };
     rootLabel.textContent = node.name;
     rootLabel.title = path;
+    try { await getCurrentWebviewWindow().setTitle(node.name || 'askmd'); } catch {}
+    // タブ側のラベル / rootPath を同期。skipTabUpdate=true はタブ切替中の
+    // 無限ループ防止で付与される (onSwitchTo → loadRoot → updateActive → render...)
+    if (!opts?.skipTabUpdate) {
+      tabs.updateActive({ rootPath: path, label: node.name, currentFile: null });
+    }
     tree.render(node, path);
     // 最近開いたディレクトリに追加
     void invoke('add_recent_dir', { path });
@@ -742,12 +750,10 @@ document.getElementById('tbChanges')?.addEventListener('click', () => {
   void showChangedFiles();
 });
 
-// ─── フォルダ / md ファイル D&D ───
-// 1. 何も開いていない window: 現在の window に読み込む
+// ─── フォルダ / md ファイル D&D / 外部オープン ───
+// 1. 現在のタブが空 (root 無し): そのタブにロードする
 // 2. .md 直投下で親ディレクトリが現在の root と同じ: その場でファイルを開く
-// 3. それ以外 (別ディレクトリ / 別 root の .md): 同一プロセス内で新ウィンドウを生成
-//    (macOS の tabbing_identifier により OS 設定に従って自動でタブにもなる)
-// tauri://drag-drop (アプリ window へのドロップ) と askmd://external-open (Dock / Finder "Open With") の両方で使う
+// 3. それ以外 (別ディレクトリ / 別 root の .md): 新規タブを生成してそこにロード
 async function handleExternalOpen(paths: string[]): Promise<void> {
   if (!paths || paths.length === 0) return;
   const first = paths[0];
@@ -773,10 +779,13 @@ async function handleExternalOpen(paths: string[]): Promise<void> {
     return;
   }
 
-  try {
-    await invoke('new_window', { path: first });
-  } catch (e) {
-    showToast(t('toast.scanFail', String(e)));
+  // 別ルート: 新しいタブを開く
+  await tabs.addAndActivate(null, '新規');
+  if (isMd && parent) {
+    await loadRoot(parent);
+    await openFile(first);
+  } else if (targetRoot) {
+    await loadRoot(targetRoot);
   }
 }
 
@@ -830,6 +839,8 @@ installGlobalKeymap({
   translateCurrentDoc,
   schedulePreview,
   openFile,
+  switchTabByIndex: (idx) => { void tabs.switchByIndex(idx); },
+  switchTabRelative: (delta) => { void tabs.switchRelative(delta); },
 });
 
 // 選択状態の変化を askBridge に橋渡し
@@ -967,8 +978,8 @@ async function renderRecentDirs(): Promise<void> {
   try {
     const recent = (await invoke('get_recent_dirs')) as RecentDir[];
     if (recent.length === 0) return;
-    const existing = emptyState.querySelector('.recent-list');
-    if (existing) existing.remove();
+    // 再呼出しで重複しないよう heading と list の両方を除去してから追加し直す
+    emptyState.querySelectorAll('.recent-heading, .recent-list').forEach((el) => el.remove());
 
     const heading = createEl('div', { class: 'recent-heading' }, t('empty.recent'));
     emptyState.appendChild(heading);
@@ -1112,6 +1123,8 @@ void listen('menu-action', (ev) => {
     case 'undo_delete': void fileOps.undoDelete(); break;
     case 'toggle_sidebar': toggleSidebar(); break;
     case 'quick_switch': palette.open(tree.flatten()); break;
+    case 'new_tab': void tabs.addAndActivate(null, '新規'); break;
+    case 'close_tab': void tabs.closeActive(); break;
     case 'search':
       if (state.currentRoot) search.open(state.currentRoot.path);
       else showToast(t('toast.openDirFirst'));
@@ -1130,6 +1143,62 @@ void listen('menu-action', (ev) => {
 window.addEventListener('beforeunload', () => {
   if (state.currentFile) saveScrollPos(state.currentFile, docContent.scrollTop);
 });
+
+// ─── HTML タブ ───
+// native tab は使わず (styling 困難 + cross platform 不揃い)、アプリ内で
+// タブバーを描画する。1 タブ = 1 ルート (フォルダ)、切替時に loadRoot / openFile を再実行。
+const tabs = createTabs(byId('tabBar'), {
+  onSwitchTo: async (target, prev) => {
+    // 切替前のタブに現在の状態を書き戻す
+    if (prev) {
+      prev.currentFile = state.currentFile;
+    }
+    // 切替先の状態を復元
+    if (target.rootPath) {
+      if (!state.currentRoot || state.currentRoot.path !== target.rootPath) {
+        await loadRoot(target.rootPath, { skipTabUpdate: true });
+      }
+      if (target.currentFile) {
+        await openFile(target.currentFile);
+      } else {
+        // root のみ: 本文は空に
+        resetDocToEmpty();
+      }
+    } else {
+      // 空タブ: ルート未選択
+      state.currentRoot = null;
+      state.currentFile = null;
+      rootLabel.textContent = '';
+      tree.render(null, null);
+      resetDocToEmpty();
+      void renderRecentDirs();
+    }
+  },
+  onAddTab: () => {
+    void tabs.addAndActivate(null, '新規');
+  },
+  onLastTabClose: () => {
+    void getCurrentWebviewWindow().close();
+  },
+});
+
+function resetDocToEmpty(): void {
+  clear(docHeader);
+  docHeader.classList.remove('empty');
+  clear(docContent);
+  docContent.appendChild(createEl(
+    'div',
+    { id: 'emptyState' },
+    createEl('button', {
+      id: 'openBtnLarge',
+      class: 'btn-primary btn-large',
+      onClick: () => void pickAndLoad(),
+    }, t('empty.open')),
+    createEl('p', { class: 'empty-hint' }, t('empty.hint')),
+  ));
+  docContent.dataset.path = '';
+  askBridge.updateFileAskBtn();
+}
 
 // ─── 起動 ───
 initLang();
@@ -1167,6 +1236,12 @@ langBtn.addEventListener('click', () => {
   try {
     await initProviderMenu();
     askBridge.updateFileAskBtn();
+    // 最初のタブを空状態で作る。loadRoot の updateActive がここに rootPath / label を埋める。
+    tabs.add(null, '新規');
+    // activeId をセットするため render は既に走ってるが、切替ロジックを介さず activeId を
+    // 最初のタブに向ける必要がある。最初の 1 枚だけ直接 switchTo を呼ぶ。
+    await tabs.switchTo(tabs.list()[0].id);
+
     const initial = (await invoke('get_initial_path')) as string | null;
     if (initial) {
       await loadRoot(initial);

@@ -20,6 +20,15 @@
   --quote-border: #c2c2c8;
   --toast-bg: #35353d;
   --toast-border: #48485a;
+  /* Safari 流の 2 トーン chrome: title (toolbar 帯、明るい) と tabbar (タブ帯、濃い) */
+  --titlebar-top: #ebeaea;
+  --titlebar-bar: #cdcccc;
+  --titlebar-border: #b8b8b8;
+  --tab-active-bg: var(--titlebar-top);
+  --tab-inactive-bg: var(--titlebar-bar);
+  --tab-inactive-hover-bg: #c0bfbf;
+  --tab-text: #1c1c1e;
+  --tab-text-inactive: #505055;
 }
 
 [data-theme="github-dark"] {
@@ -41,6 +50,14 @@
   --quote-border: #4a4a55;
   --toast-bg: #2c2c34;
   --toast-border: #48485a;
+  --titlebar-top: #2d2d2f;
+  --titlebar-bar: #1c1c1f;
+  --titlebar-border: #0a0a0c;
+  --tab-active-bg: var(--titlebar-top);
+  --tab-inactive-bg: var(--titlebar-bar);
+  --tab-inactive-hover-bg: #28282b;
+  --tab-text: #e4e4e6;
+  --tab-text-inactive: #a8a8b0;
 }
 
 [data-theme="solarized-light"] {
@@ -62,6 +79,14 @@
   --quote-border: #93a1a1;
   --toast-bg: #073642;
   --toast-border: #586e75;
+  --titlebar-top: #e0d8bd;
+  --titlebar-bar: #c4bc9f;
+  --titlebar-border: #a69f84;
+  --tab-active-bg: var(--titlebar-top);
+  --tab-inactive-bg: var(--titlebar-bar);
+  --tab-inactive-hover-bg: #b8b093;
+  --tab-text: #1c1c1e;
+  --tab-text-inactive: #586e75;
 }
 
 [data-theme="solarized-dark"] {
@@ -83,6 +108,14 @@
   --quote-border: #586e75;
   --toast-bg: #073642;
   --toast-border: #586e75;
+  --titlebar-top: #083843;
+  --titlebar-bar: #021b22;
+  --titlebar-border: #000000;
+  --tab-active-bg: var(--titlebar-top);
+  --tab-inactive-bg: var(--titlebar-bar);
+  --tab-inactive-hover-bg: #052a33;
+  --tab-text: #e4e4e6;
+  --tab-text-inactive: #93a1a1;
 }
 
 /* ─────────── レイアウト (CSS Grid) ─────────── */
@@ -104,10 +137,17 @@ html, body {
 body {
   display: grid;
   grid-template-columns: 280px 1fr;
-  grid-template-rows: 28px 1fr;
+  /* title = 28px (traffic lights + toolbar)
+     tabbar = 0 (タブ 1 枚) / 28px (tabs-multiple 時)
+     left / right = 1fr */
+  grid-template-rows: 28px 0 1fr;
   grid-template-areas:
-    "title title"
-    "left  right";
+    "title  title"
+    "tabbar tabbar"
+    "left   right";
+}
+body.tabs-multiple {
+  grid-template-rows: 28px 28px 1fr;
 }
 body.sidebar-collapsed {
   grid-template-columns: 0 1fr;
