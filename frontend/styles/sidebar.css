@@ -102,7 +102,10 @@ body.focus-tree .tree-node.selected .tree-outline-indicator {
 /* ─────────── ツリー ─────────── */
 .tree-node {
   display: grid;
-  grid-template-columns: auto 1fr auto auto auto;
+  /* auto: icon, 1fr: name, auto*3: badge / outline indicator / delete の順で
+     auto-placement に任せる。各 auto は条件付きで出現するので固定列番号
+     (grid-column: N) を使うとアイコン同士が衝突して段落ちする。 */
+  grid-template-columns: auto minmax(0, 1fr) auto auto auto;
   align-items: center;
   column-gap: 8px;
   padding: 7px 10px;
@@ -158,7 +161,6 @@ body.focus-tree .tree-node.selected .tree-outline-indicator {
 
 /* バツアイコン (削除ボタン) — hover か selected / confirm 時だけ出す */
 .tree-delete {
-  grid-column: 4;
   width: 20px;
   height: 20px;
   border: none;
