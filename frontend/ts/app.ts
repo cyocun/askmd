@@ -122,6 +122,7 @@ const fileOps = createFileOps({
   refreshTree: () => refreshTree(),
   treeSetActive: (path) => tree.setActive(path),
   showEmptyState: () => {
+    disposeThumbGrid();
     clear(docHeader);
     clear(docContent);
     docContent.classList.remove('thumb-grid-host');
@@ -460,6 +461,7 @@ function renderDoc(
   const prevPath = docContent.dataset.path || '';
   // サムネ表示からの切替に備え、先にクラスを剥がす (cached restore 経路もカバー)
   docContent.classList.remove('thumb-grid-host');
+  disposeThumbGrid();
 
   // 別ファイルへの切替時のみ現在の DOM を退避。
   // 同一ファイルの再レンダリング (fs-changed 後) では旧 DOM を保存しない —
@@ -575,8 +577,16 @@ function markChanges(node: TreeNode, changed: Map<string, number>): void {
 }
 
 // ─── サムネイル一覧 (ルートあり・ファイル未選択のときの右カラム) ───
+// サムネ grid が持つ Observer を、別ビューへ切り替える時に disconnect する。
+let cleanupThumbGrid: (() => void) | null = null;
+function disposeThumbGrid(): void {
+  cleanupThumbGrid?.();
+  cleanupThumbGrid = null;
+}
+
 async function showThumbnailGrid(): Promise<void> {
   if (!state.currentRoot) return;
+  disposeThumbGrid();
   state.currentFile = null;
   clear(docHeader);
   docHeader.classList.add('empty');
@@ -584,7 +594,7 @@ async function showThumbnailGrid(): Promise<void> {
   docContent.classList.remove('thumb-grid-host'); // いったん剥がして再付与
   docContent.dataset.path = '';
   docContent.scrollTop = 0;
-  await renderThumbnailGrid(docContent, state.currentRoot.path, (p) => {
+  cleanupThumbGrid = await renderThumbnailGrid(docContent, state.currentRoot.path, (p) => {
     void openFile(p);
     tree.setActive(p);
   });
@@ -1209,6 +1219,7 @@ const tabs = createTabs(byId('tabBar'), {
 });
 
 function resetDocToEmpty(): void {
+  disposeThumbGrid();
   clear(docHeader);
   docHeader.classList.remove('empty');
   clear(docContent);

@@ -377,3 +377,42 @@ export function render(markdown: string): string {
     ADD_TAGS: ['input', 'details', 'summary', 'mark', 'semantics', 'annotation', 'mrow', 'mi', 'mo', 'mn', 'ms', 'mtext', 'mfrac', 'msqrt', 'mroot', 'msup', 'msub', 'msubsup', 'munder', 'mover', 'munderover', 'mtable', 'mtr', 'mtd', 'mspace', 'mphantom', 'mpadded', 'menclose', 'math'],
   });
 }
+
+// ─── 軽量 render (サムネイル用) ───
+// サムネは scale 0.3 前後に縮小されるので hljs の色分けや KaTeX の数式 SVG は
+// ほぼ見えない。md は再利用せず、hljs / KaTeX / Mermaid フェンス上書きを
+// 外した別インスタンスを持つ。==mark== / task list / footnote / linkify は残す
+// (これらはサムネの見た目にも効く)。
+const mdLight = MarkdownIt({ html: true, breaks: true, linkify: true });
+mdLight.use(markdownitFootnote);
+mdLight.inline.ruler.after('emphasis', 'mark', highlightInline);
+const lightDefaultListItemOpen = mdLight.renderer.rules.list_item_open || function(tokens: any[], idx: number, options: any, _env: any, self: any) {
+  return self.renderToken(tokens, idx, options);
+};
+mdLight.renderer.rules.list_item_open = function(tokens: any[], idx: number, options: any, env: any, self: any) {
+  const contentToken = tokens[idx + 2];
+  if (contentToken && contentToken.type === 'inline' && contentToken.content) {
+    const m = contentToken.content.match(/^\[([ xX])\]\s*/);
+    if (m) {
+      const checked = m[1] !== ' ';
+      contentToken.content = contentToken.content.slice(m[0].length);
+      if (contentToken.children && contentToken.children.length > 0) {
+        const first = contentToken.children[0];
+        if (first.type === 'text') {
+          first.content = first.content.replace(/^\[([ xX])\]\s*/, '');
+        }
+      }
+      tokens[idx].attrSet('class', 'task-list-item');
+      return lightDefaultListItemOpen(tokens, idx, options, env, self) +
+        `<input type="checkbox" disabled${checked ? ' checked' : ''}> `;
+    }
+  }
+  return lightDefaultListItemOpen(tokens, idx, options, env, self);
+};
+
+export function renderLight(markdown: string): string {
+  return DOMPurify.sanitize(mdLight.render(markdown), {
+    ADD_ATTR: ['target', 'rel', 'checked', 'disabled', 'type'],
+    ADD_TAGS: ['input', 'details', 'summary', 'mark'],
+  });
+}
