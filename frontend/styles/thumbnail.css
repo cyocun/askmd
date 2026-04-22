@@ -1,0 +1,248 @@
+/* サムネイル一覧 (ルートを開いた直後の右カラム表示)
+   - frame は固定サイズ (180x240 ≒ 3:4)。中身の canvas は実寸 (800px 幅) を
+     transform: scale(0.225) で縮小するので「紙面の縮小絵」になる。
+   - 文字は見出しだけ実テキストを残す。本文/リストは灰色バーに置換。
+   - 画像は lazy で実描画する (要件)。
+*/
+
+/* host (docContent) 側: サムネ表示時はパディングを剥がしてグリッド全面展開 */
+#docContent.thumb-grid-host {
+  padding: 0;
+}
+
+.thumb-grid-container {
+  padding: 24px 28px 48px;
+  max-width: 100%;
+  box-sizing: border-box;
+  /* サイドバー開閉でも即座にブレークポイントが効くよう、viewport ではなく
+     コンテナ基準で列数を切り替える。 */
+  container-type: inline-size;
+  container-name: thumbs;
+}
+
+.thumb-grid {
+  display: grid;
+  /* 狭い時は 1 列。container query で段階的に増やす。3 列に達したら
+     それ以上は列を増やさず、余った幅を各カードが 1fr で吸い上げる。
+     scale (連続値) は ResizeObserver 側でカード実幅から算出。 */
+  grid-template-columns: 1fr;
+  gap: 24px 20px;
+  --thumb-scale: 0.225;
+}
+
+@container thumbs (min-width: 580px) {
+  .thumb-grid { grid-template-columns: repeat(2, 1fr); }
+}
+@container thumbs (min-width: 980px) {
+  .thumb-grid { grid-template-columns: repeat(3, 1fr); }
+}
+
+.thumb-empty {
+  color: var(--text-faint);
+  font-size: 13px;
+  padding: 40px 0;
+  text-align: center;
+}
+
+/* ─── カード ─── */
+.thumb-card {
+  all: unset;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  cursor: pointer;
+  padding: 0;
+  box-sizing: border-box;
+  transition: transform 0.12s ease;
+}
+.thumb-card:hover {
+  transform: translateY(-2px);
+}
+.thumb-card:hover .thumb-frame {
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.14);
+  border-color: var(--accent);
+}
+.thumb-card:focus-visible .thumb-frame {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.thumb-frame {
+  width: 100%;
+  aspect-ratio: 3 / 4;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+  position: relative;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+  transition: box-shadow 0.12s ease, border-color 0.12s ease;
+}
+
+.thumb-skeleton {
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(
+    180deg,
+    var(--border-subtle) 0 12px,
+    transparent 12px 22px
+  );
+  opacity: 0.55;
+}
+
+.thumb-footer {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.thumb-title {
+  font-size: 12.5px;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.3;
+}
+.thumb-meta {
+  font-size: 11px;
+  color: var(--text-faint);
+  line-height: 1.3;
+}
+
+/* ─── canvas (実寸 → scale で縮小) ─── */
+/* 実寸 800px を --thumb-scale で縮小。scale は grid 側でカード幅から算出。 */
+.thumb-canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 800px;
+  padding: 48px 60px;
+  box-sizing: border-box;
+  transform: scale(var(--thumb-scale, 0.225));
+  transform-origin: top left;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  color: var(--text);
+  font-family: inherit;
+}
+
+/* 見出し (実テキストを残す) */
+.th-heading {
+  font-weight: 700;
+  color: var(--text);
+  line-height: 1.25;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.th-h1 { font-size: 38px; margin: 4px 0 8px; }
+.th-h2 { font-size: 30px; margin: 10px 0 4px; }
+.th-h3 { font-size: 24px; margin: 6px 0 2px; }
+.th-h4, .th-h5, .th-h6 { font-size: 20px; margin: 4px 0; }
+
+/* 本文バー (灰色の行) */
+.th-para {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.th-bar {
+  height: 14px;
+  background: var(--border);
+  border-radius: 3px;
+  opacity: 0.75;
+}
+
+/* リスト */
+.th-li {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 3px 0;
+}
+.th-li-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--text-faint);
+  flex-shrink: 0;
+}
+
+/* 引用 */
+.th-quote {
+  border-left: 4px solid var(--quote-border);
+  padding: 6px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.th-quote .th-bar {
+  opacity: 0.55;
+}
+
+/* コード */
+.th-code {
+  background: var(--bg-code);
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.th-code-line {
+  height: 11px;
+  background: var(--text-faint);
+  border-radius: 2px;
+  opacity: 0.45;
+}
+.th-code-line-empty {
+  opacity: 0;
+  background: transparent;
+}
+
+/* 水平線 */
+.th-hr {
+  height: 2px;
+  background: var(--border);
+  border-radius: 1px;
+  margin: 8px 0;
+}
+
+/* 表 (3x3 のダミーグリッド) */
+.th-table {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  overflow: hidden;
+}
+.th-tr {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  border-bottom: 1px solid var(--border);
+}
+.th-tr:last-child { border-bottom: none; }
+.th-tr:first-child .th-td { background: var(--bg-hover); }
+.th-td {
+  height: 28px;
+  border-right: 1px solid var(--border);
+}
+.th-td:last-child { border-right: none; }
+
+/* 画像 */
+.th-img-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 6px 0;
+}
+.th-img {
+  max-width: 100%;
+  max-height: 360px;
+  object-fit: contain;
+  border-radius: 4px;
+  background: var(--bg-hover);
+}

@@ -62,6 +62,12 @@ const translations: Record<string, Record<Lang, string>> = {
   'changes.title': { ja: '変更のあるファイル ({0})', en: 'Files with changes ({0})' },
   'changes.none': { ja: '変更のあるファイルはありません', en: 'No changes' },
   'changes.fail': { ja: '変更のあるファイルを調べられませんでした', en: 'Couldn\u2019t check for changes' },
+  // ─ Thumbnail grid (ルートを開いた直後の右カラム) ─
+  'thumb.empty': { ja: 'このフォルダに Markdown はありません', en: 'No Markdown files in this folder' },
+  'thumb.justNow': { ja: 'たった今', en: 'just now' },
+  'thumb.minutesAgo': { ja: '{0} 分前', en: '{0}m ago' },
+  'thumb.hoursAgo': { ja: '{0} 時間前', en: '{0}h ago' },
+  'thumb.daysAgo': { ja: '{0} 日前', en: '{0}d ago' },
   // ─ Recent files (mtime) ─
   'recent.title': { ja: '最近更新したメモ', en: 'Recently updated' },
   'recent.none': { ja: 'まだ更新されたメモはありません', en: 'No recent updates' },

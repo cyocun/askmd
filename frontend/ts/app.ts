@@ -12,6 +12,7 @@ import { openListOverlay, relativeFromRoot } from './list-overlay';
 import { createTreeView } from './tree';
 import { createTabs } from './tabs';
 import { addCopyButtons, extractTitle, parseFrontmatter, processAdmonitions, render, renderMermaidBlocks } from './renderer';
+import { renderThumbnailGrid } from './thumbnail';
 import { currentTheme, initTheme } from './theme';
 import { initFontScale } from './font-scale';
 import { initLang, getLang, toggleLang, t } from './i18n';
@@ -123,6 +124,7 @@ const fileOps = createFileOps({
   showEmptyState: () => {
     clear(docHeader);
     clear(docContent);
+    docContent.classList.remove('thumb-grid-host');
     docContent.appendChild(createEl(
       'div',
       { id: 'emptyState' },
@@ -456,6 +458,8 @@ function renderDoc(
   header: HTMLElement | null,
 ): void {
   const prevPath = docContent.dataset.path || '';
+  // サムネ表示からの切替に備え、先にクラスを剥がす (cached restore 経路もカバー)
+  docContent.classList.remove('thumb-grid-host');
 
   // 別ファイルへの切替時のみ現在の DOM を退避。
   // 同一ファイルの再レンダリング (fs-changed 後) では旧 DOM を保存しない —
@@ -570,6 +574,23 @@ function markChanges(node: TreeNode, changed: Map<string, number>): void {
   }
 }
 
+// ─── サムネイル一覧 (ルートあり・ファイル未選択のときの右カラム) ───
+async function showThumbnailGrid(): Promise<void> {
+  if (!state.currentRoot) return;
+  state.currentFile = null;
+  clear(docHeader);
+  docHeader.classList.add('empty');
+  clear(docContent);
+  docContent.classList.remove('thumb-grid-host'); // いったん剥がして再付与
+  docContent.dataset.path = '';
+  docContent.scrollTop = 0;
+  await renderThumbnailGrid(docContent, state.currentRoot.path, (p) => {
+    void openFile(p);
+    tree.setActive(p);
+  });
+  askBridge.updateFileAskBtn();
+}
+
 // ─── ディレクトリ読み込み ───
 async function loadRoot(path: string, opts?: { skipTabUpdate?: boolean }): Promise<void> {
   try {
@@ -596,6 +617,11 @@ async function loadRoot(path: string, opts?: { skipTabUpdate?: boolean }): Promi
       await invoke('start_watch', { path });
     } catch (e) {
       console.warn('start_watch failed:', e);
+    }
+    // タブ切替経由 (skipTabUpdate=true) の場合は onSwitchTo 側が描画を決めるので呼ばない。
+    // 通常の loadRoot (フォルダドロップ/CLI/最近開いた) は未選択状態でサムネ一覧を出す。
+    if (!opts?.skipTabUpdate && !state.currentFile) {
+      await showThumbnailGrid();
     }
   } catch (e) {
     showToast(t('toast.scanFail', String(e)));
@@ -1161,8 +1187,8 @@ const tabs = createTabs(byId('tabBar'), {
       if (target.currentFile) {
         await openFile(target.currentFile);
       } else {
-        // root のみ: 本文は空に
-        resetDocToEmpty();
+        // root のみ: サムネイル一覧を出す
+        await showThumbnailGrid();
       }
     } else {
       // 空タブ: ルート未選択
@@ -1186,6 +1212,7 @@ function resetDocToEmpty(): void {
   clear(docHeader);
   docHeader.classList.remove('empty');
   clear(docContent);
+  docContent.classList.remove('thumb-grid-host');
   docContent.appendChild(createEl(
     'div',
     { id: 'emptyState' },
