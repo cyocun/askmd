@@ -4,7 +4,19 @@ use std::fs;
 use std::path::PathBuf;
 use std::process::Command;
 
-const MAX_RECENT: usize = 5;
+const MAX_RECENT: usize = 10;
+
+/// 末尾の `/` を剥がしてパスを正規化する。
+/// `~/foo/bar` と `~/foo/bar/` を同一エントリとして扱うため。
+/// ルート `/` だけは剥がさない。
+fn normalize_path(path: &str) -> String {
+    let trimmed = path.trim_end_matches('/');
+    if trimmed.is_empty() {
+        "/".to_string()
+    } else {
+        trimmed.to_string()
+    }
+}
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct StoredRecentDir {
@@ -30,7 +42,17 @@ fn load() -> Vec<StoredRecentDir> {
     let Ok(data) = fs::read_to_string(&path) else {
         return vec![];
     };
-    serde_json::from_str(&data).unwrap_or_default()
+    let raw: Vec<StoredRecentDir> = serde_json::from_str(&data).unwrap_or_default();
+    // 末尾 `/` の有無だけ違う重複を排除 (先勝ち = 新しい方を残す)
+    let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let mut out = Vec::with_capacity(raw.len());
+    for mut entry in raw {
+        entry.path = normalize_path(&entry.path);
+        if seen.insert(entry.path.clone()) {
+            out.push(entry);
+        }
+    }
+    out
 }
 
 fn save(dirs: &[StoredRecentDir]) {
@@ -158,11 +180,15 @@ fn enrich(stored: StoredRecentDir) -> RecentDir {
 
 #[tauri::command]
 pub async fn get_recent_dirs() -> Vec<RecentDir> {
-    load().into_iter().map(enrich).collect()
+    // 旧データの末尾 `/` 重複を load() が dedup するので、そのまま永続側にも反映しておく
+    let dirs = load();
+    save(&dirs);
+    dirs.into_iter().map(enrich).collect()
 }
 
 #[tauri::command]
 pub async fn add_recent_dir(path: String) -> Vec<RecentDir> {
+    let path = normalize_path(&path);
     let name = std::path::Path::new(&path)
         .file_name()
         .map(|n| n.to_string_lossy().into_owned())
