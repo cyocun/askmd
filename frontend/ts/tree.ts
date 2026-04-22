@@ -1,6 +1,7 @@
 import { clear, createEl } from './dom';
 import { iconFile, iconFolder, iconFolderOpen, iconOutline, iconTrash } from './icons';
 import { t } from './i18n';
+import { isUpdated } from './last-viewed';
 import type { OutlineItem, TreeNode } from './types';
 
 // ナビゲーション可能な「行」の抽象: ファイル / ディレクトリ / アウトライン見出し
@@ -41,6 +42,8 @@ export interface TreeView {
   cancelPendingDelete(): void;
   applyFilter(query: string): void;
   flatten(): TreeNode[];
+  /** 指定パスの更新ドット表示を isUpdated() の最新判定で描き直す */
+  refreshUpdatedDot(path: string): void;
 }
 
 export function createTreeView(
@@ -145,13 +148,9 @@ export function createTreeView(
     });
     el.appendChild(iconFile());
     el.appendChild(nameWrap);
-    if (node.has_changes) {
-      const badge = createEl('span', {
-        class: 'tree-change-badge',
-        title: `${node.change_count || '?'} lines changed`,
-      });
-      el.appendChild(badge);
-    }
+    const dot = createEl('span', { class: 'tree-updated-dot' });
+    dot.classList.toggle('is-hidden', !isUpdated(node.path, node.mtime));
+    el.appendChild(dot);
     if (indicator) el.appendChild(indicator);
     el.appendChild(delBtn);
     // 右クリックメニュー + 選択状態もついでに更新
@@ -478,6 +477,13 @@ export function createTreeView(
     },
     flatten() {
       return rows.filter((r) => r.kind === 'file').map((r) => r.node!);
+    },
+    refreshUpdatedDot(path) {
+      const row = rows.find((r) => r.kind === 'file' && r.node?.path === path);
+      if (!row?.node) return;
+      const dot = row.el.querySelector('.tree-updated-dot');
+      if (!dot) return;
+      dot.classList.toggle('is-hidden', !isUpdated(row.node.path, row.node.mtime));
     },
   };
 }

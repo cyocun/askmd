@@ -14,7 +14,19 @@ pub struct TreeNode {
     // .md ファイルの場合のみ入る。frontmatter の title: か最初の `# ` 見出し。
     #[serde(skip_serializing_if = "Option::is_none")]
     pub title: Option<String>,
+    // .md ファイルの mtime (unix epoch 秒)。JS 側で「最後に見た日」との比較に使う
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub mtime: Option<u64>,
     pub children: Option<Vec<TreeNode>>,
+}
+
+fn file_mtime(path: &Path) -> Option<u64> {
+    let meta = fs::metadata(path).ok()?;
+    let modified = meta.modified().ok()?;
+    modified
+        .duration_since(std::time::UNIX_EPOCH)
+        .ok()
+        .map(|d| d.as_secs())
 }
 
 // ファイル先頭 100 行を読み、frontmatter title か最初の `# 見出し` を返す。
@@ -74,6 +86,7 @@ fn scan(path: &Path) -> Option<TreeNode> {
                 path: path_str,
                 is_dir: false,
                 title: extract_title(path),
+                mtime: file_mtime(path),
                 children: None,
             });
         }
@@ -105,6 +118,7 @@ fn scan(path: &Path) -> Option<TreeNode> {
         path: path_str,
         is_dir: true,
         title: None,
+        mtime: None,
         children: Some(children),
     })
 }

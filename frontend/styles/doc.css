@@ -339,33 +339,6 @@
 .md-body hr { border: none; border-top: 1px solid var(--border-subtle); margin: 1.8em 0; }
 .md-body img { max-width: 100%; border-radius: 4px; }
 
-/* ─── doc ヘッダー差分バッジ ─── */
-.doc-diff-badge {
-  color: var(--accent) !important;
-  background: var(--accent-soft);
-  border-color: transparent;
-  font-weight: 600;
-}
-.doc-diff-badge:hover { opacity: 0.7; }
-.doc-diff-badge.active {
-  background: var(--accent);
-  color: #fff !important;
-}
-
-/* ─── レンダリング済み markdown 上の差分ハイライト ─── */
-.diff-block-add {
-  border-left: 3px solid #3fb950;
-  background: rgba(76, 175, 80, 0.08);
-  padding-left: 10px !important;
-  margin-left: -13px;
-}
-.diff-block-change {
-  border-left: 3px solid #d29922;
-  background: rgba(210, 153, 34, 0.08);
-  padding-left: 10px !important;
-  margin-left: -13px;
-}
-
 /* ─── タスクリスト (チェックボックス) ─── */
 .md-body .task-list-item {
   list-style: none;

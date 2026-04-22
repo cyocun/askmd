@@ -58,12 +58,6 @@ const translations: Record<string, Record<Lang, string>> = {
   'toast.moveFail': { ja: '移動できませんでした: {0}', en: 'Couldn\u2019t move: {0}' },
   'toast.renameFail': { ja: '名前を変えられませんでした: {0}', en: 'Couldn\u2019t rename: {0}' },
   'toast.duplicateFail': { ja: '複製できませんでした: {0}', en: 'Couldn\u2019t duplicate: {0}' },
-  // ─ Diff / Changes ─
-  'diff.changed': { ja: '{0} 行変更', en: '{0} lines changed' },
-  'diff.clickToView': { ja: 'クリックで差分を見る', en: 'Click to see changes' },
-  'changes.title': { ja: '変更のあるファイル ({0})', en: 'Files with changes ({0})' },
-  'changes.none': { ja: '変更のあるファイルはありません', en: 'No changes' },
-  'changes.fail': { ja: '変更のあるファイルを調べられませんでした', en: 'Couldn\u2019t check for changes' },
   // ─ Thumbnail grid (ルートを開いた直後の右カラム) ─
   'thumb.empty': { ja: 'このフォルダに Markdown はありません', en: 'No Markdown files in this folder' },
   'thumb.justNow': { ja: 'たった今', en: 'just now' },
@@ -75,7 +69,6 @@ const translations: Record<string, Record<Lang, string>> = {
   'recent.none': { ja: 'まだ更新されたメモはありません', en: 'No recent updates' },
   'recent.fail': { ja: '最近のメモを調べられませんでした', en: 'Couldn\u2019t load recent notes' },
   // ─ Toolbar ─
-  'tb.changes': { ja: '変更のあるファイル', en: 'Files with changes' },
   'toast.switched': { ja: '{0} に切り替えました', en: 'Switched to {0}' },
   // ─ Provider ─
   'provider.title': { ja: 'AI を切り替え', en: 'Switch AI' },

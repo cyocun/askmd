@@ -1,6 +1,5 @@
 pub mod ai;
 pub mod cli;
-pub mod diff;
 pub mod directory;
 pub mod finder;
 pub mod markdown;

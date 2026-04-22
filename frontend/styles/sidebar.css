@@ -88,27 +88,34 @@ body.focus-tree .tree-node.selected .tree-outline-indicator {
   color: var(--text-faint);
 }
 
-/* ─────────── ツリー変更バッジ ─────────── */
-.tree-change-badge {
-  display: inline-block;
+/* ─────────── ツリー「最後に見た日より後に更新」ドット ─────────── */
+/* ゴミ箱 (right:10, width:20) と同じ中心に重ねる。hover/selected 時はゴミ箱に譲る。 */
+.tree-updated-dot {
+  position: absolute;
+  right: 17px;
+  top: 50%;
+  transform: translateY(-50%);
   width: 6px;
   height: 6px;
   border-radius: 50%;
   background: var(--accent);
-  flex-shrink: 0;
-  margin-left: 2px;
+  pointer-events: none;
 }
+.tree-updated-dot.is-hidden,
+.tree-node:hover .tree-updated-dot,
+.tree-node.selected .tree-updated-dot,
+.tree-node.confirm-delete .tree-updated-dot { display: none; }
 
 /* ─────────── ツリー ─────────── */
 .tree-node {
   display: grid;
-  /* auto: icon, 1fr: name, auto*3: badge / outline indicator / delete の順で
-     auto-placement に任せる。各 auto は条件付きで出現するので固定列番号
-     (grid-column: N) を使うとアイコン同士が衝突して段落ちする。 */
-  grid-template-columns: auto minmax(0, 1fr) auto auto auto;
+  /* icon / name / outline-indicator の 3 列だけ grid。
+     ゴミ箱と更新ドットは absolute で右端固定する (grid 列の増減で位置がブレないため)。
+     右 padding でゴミ箱 20px 分の領域を常時確保。 */
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
   column-gap: 8px;
-  padding: 7px 10px;
+  padding: 7px 34px 7px 10px;
   border-radius: 6px;
   cursor: default;
   user-select: none;
@@ -159,8 +166,12 @@ body.focus-tree .tree-node.selected .tree-outline-indicator {
 
 .tree-node.hidden { display: none; }
 
-/* バツアイコン (削除ボタン) — hover か selected / confirm 時だけ出す */
+/* バツアイコン (削除ボタン) — 常に右端固定。hover / selected / confirm 時だけ可視 */
 .tree-delete {
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
   width: 20px;
   height: 20px;
   border: none;

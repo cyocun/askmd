@@ -1,6 +1,6 @@
 {
   "name": "askmd",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "description": ".md に絞った軽量ビューア + 選択範囲を Claude CLI に質問できる GUI",
   "scripts": {
     "dev": "vite --config vite.config.ts",
