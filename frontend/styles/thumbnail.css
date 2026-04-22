@@ -1,9 +1,9 @@
 /* サムネイル一覧 (ルートを開いた直後の右カラム表示)
-   - frame は固定サイズ (180x240 ≒ 3:4)。中身の canvas は実寸 (800px 幅) を
-     transform: scale(0.225) で縮小するので「紙面の縮小絵」になる。
-   - 文字は見出しだけ実テキストを残す。本文/リストは灰色バーに置換。
-   - 画像は lazy で実描画する (要件)。
-*/
+   - frame は aspect-ratio 3/4 のカード。中身の canvas は実寸 (800px 幅) の
+     .md-body を transform: scale で縮小することで「紙面の縮小絵」にする。
+   - 本文のタイポグラフィは doc.css の .md-body ルールをそのまま借りる
+     (独自クラスを持たない)。canvas 側で max-width / margin だけ上書き。
+   - 列数は @container、scale はカード実幅から JS が算出。 */
 
 /* host (docContent) 側: サムネ表示時はパディングを剥がしてグリッド全面展開 */
 #docContent.thumb-grid-host {
@@ -110,8 +110,9 @@
   line-height: 1.3;
 }
 
-/* ─── canvas (実寸 → scale で縮小) ─── */
-/* 実寸 800px を --thumb-scale で縮小。scale は grid 側でカード幅から算出。 */
+/* ─── canvas (実寸の .md-body → scale で縮小) ─── */
+/* 実寸 800px を --thumb-scale で縮小。scale は JS がカード幅から算出。
+   canvas は .md-body クラスも持つので doc.css のタイポグラフィが全部効く。 */
 .thumb-canvas {
   position: absolute;
   top: 0;
@@ -121,128 +122,24 @@
   box-sizing: border-box;
   transform: scale(var(--thumb-scale, 0.225));
   transform-origin: top left;
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-  color: var(--text);
-  font-family: inherit;
 }
-
-/* 見出し (実テキストを残す) */
-.th-heading {
-  font-weight: 700;
-  color: var(--text);
-  line-height: 1.25;
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
+/* doc.css の .md-body は max-width:780px / margin:40px auto 0 が付いている。
+   サムネでは canvas 全幅を使いたいので打ち消す。 */
+.thumb-canvas.md-body {
+  max-width: none;
+  margin: 0;
 }
-.th-h1 { font-size: 38px; margin: 4px 0 8px; }
-.th-h2 { font-size: 30px; margin: 10px 0 4px; }
-.th-h3 { font-size: 24px; margin: 6px 0 2px; }
-.th-h4, .th-h5, .th-h6 { font-size: 20px; margin: 4px 0; }
-
-/* 本文バー (灰色の行) */
-.th-para {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
+/* サムネ内ではコピーボタン / ask ハイライト / translate ツールチップ用領域を
+   表示する必要がないので非表示にしておく (念のため)。 */
+.thumb-canvas .code-copy-btn,
+.thumb-canvas .ask-highlight,
+.thumb-canvas .mermaid-expand {
+  display: none;
 }
-.th-bar {
-  height: 14px;
-  background: var(--border);
-  border-radius: 3px;
-  opacity: 0.75;
-}
-
-/* リスト */
-.th-li {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 3px 0;
-}
-.th-li-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--text-faint);
-  flex-shrink: 0;
-}
-
-/* 引用 */
-.th-quote {
-  border-left: 4px solid var(--quote-border);
-  padding: 6px 14px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-.th-quote .th-bar {
-  opacity: 0.55;
-}
-
-/* コード */
-.th-code {
-  background: var(--bg-code);
-  border: 1px solid var(--border-subtle);
-  border-radius: 6px;
-  padding: 14px 16px;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-.th-code-line {
-  height: 11px;
-  background: var(--text-faint);
-  border-radius: 2px;
-  opacity: 0.45;
-}
-.th-code-line-empty {
-  opacity: 0;
-  background: transparent;
-}
-
-/* 水平線 */
-.th-hr {
-  height: 2px;
-  background: var(--border);
-  border-radius: 1px;
-  margin: 8px 0;
-}
-
-/* 表 (3x3 のダミーグリッド) */
-.th-table {
-  display: flex;
-  flex-direction: column;
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  overflow: hidden;
-}
-.th-tr {
-  display: grid;
-  grid-template-columns: 1fr 1fr 1fr;
-  border-bottom: 1px solid var(--border);
-}
-.th-tr:last-child { border-bottom: none; }
-.th-tr:first-child .th-td { background: var(--bg-hover); }
-.th-td {
-  height: 28px;
-  border-right: 1px solid var(--border);
-}
-.th-td:last-child { border-right: none; }
-
-/* 画像 */
-.th-img-row {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-  margin: 6px 0;
-}
-.th-img {
-  max-width: 100%;
-  max-height: 360px;
-  object-fit: contain;
-  border-radius: 4px;
-  background: var(--bg-hover);
+/* リンクはクリックを奪わない (href は JS で剥がしてあるが、念のため見た目も
+   通常テキストに寄せる) */
+.thumb-canvas a {
+  color: inherit;
+  text-decoration: none;
+  cursor: inherit;
 }
