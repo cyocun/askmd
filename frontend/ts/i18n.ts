@@ -21,6 +21,8 @@ const translations: Record<string, Record<Lang, string>> = {
   'tb.search': { ja: 'すべてのメモから探す (⌘F)', en: 'Search all notes (⌘F)' },
   'tb.palette': { ja: 'ファイルを探す (⌘P)', en: 'Find file (⌘P)' },
   'tb.recent': { ja: '最近', en: 'Recent' },
+  'tb.terminal': { ja: 'ターミナルで開く', en: 'Open in Terminal' },
+  'toast.terminalFail': { ja: 'ターミナルを開けませんでした: {0}', en: 'Couldn’t open Terminal: {0}' },
   // ─ Header actions ─
   'header.finder': { ja: 'Finder で表示', en: 'Reveal in Finder' },
   'header.translate': { ja: '日本語に訳す (⌘⇧T)', en: 'Translate (⌘⇧T)' },

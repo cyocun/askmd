@@ -785,6 +785,15 @@ document.getElementById('tbRecent')?.addEventListener('click', () => {
 document.getElementById('tbChanges')?.addEventListener('click', () => {
   void showChangedFiles();
 });
+document.getElementById('tbTerminal')?.addEventListener('click', () => {
+  if (!state.currentRoot) {
+    showToast(t('toast.openDirFirst'));
+    return;
+  }
+  invoke('open_in_terminal', { path: state.currentRoot.path }).catch((e) => {
+    showToast(t('toast.terminalFail', String(e)));
+  });
+});
 
 // ─── フォルダ / md ファイル D&D / 外部オープン ───
 // 1. 現在のタブが空 (root 無し): そのタブにロードする
@@ -1258,6 +1267,7 @@ document.getElementById('tbSearch')?.setAttribute('title', t('tb.search'));
 document.getElementById('tbPalette')?.setAttribute('title', t('tb.palette'));
 document.getElementById('tbRecent')?.setAttribute('title', t('recent.title'));
 document.getElementById('tbChanges')?.setAttribute('title', t('tb.changes'));
+document.getElementById('tbTerminal')?.setAttribute('title', t('tb.terminal'));
 byId('providerBtn').title = t('provider.title');
 byId('themeBtn').title = t('theme.title');
 

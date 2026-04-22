@@ -61,6 +61,7 @@ fn main() {
             commands::recent_files::get_recent_files,
             commands::finder::reveal_in_finder,
             commands::finder::open_url,
+            commands::finder::open_in_terminal,
             commands::diff::get_diff,
             commands::diff::get_diff_text,
             commands::diff::mark_as_read,
