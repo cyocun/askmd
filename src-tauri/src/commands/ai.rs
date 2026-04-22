@@ -170,6 +170,7 @@ async fn run_claude(
         .arg("--output-format")
         .arg("stream-json")
         .arg("--verbose")
+        .arg("--exclude-dynamic-system-prompt-sections")
         .arg("--allowedTools")
         .arg("Read,Glob,Grep,Edit,Write,Bash");
     if let Some(sid) = session_id.as_deref() {
