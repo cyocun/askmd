@@ -240,6 +240,10 @@
   font-size: calc(1em * var(--md-font-scale, 1));
   /* section 間の間隔は .md-section の padding-bottom に統一するため grid gap は 0 */
   display: grid;
+  /* grid の track 既定は min-content 以下に縮まないため、折り返せない長い行
+     (table / 長い URL / 一部 code 等) があると max-width 780 を破って右に
+     はみ出し、margin auto が左寄り計算になる。minmax(0,1fr) で潰す。 */
+  grid-template-columns: minmax(0, 1fr);
   gap: 0;
 }
 /* 見出しごとのセクション。sticky の入れ替わりを可能にする */

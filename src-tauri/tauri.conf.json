@@ -1,6 +1,6 @@
 {
   "productName": "askmd",
-  "version": "0.1.7",
+  "version": "0.1.8",
   "identifier": "com.cyocun.askmd",
   "build": {
     "devUrl": "http://localhost:1420",
