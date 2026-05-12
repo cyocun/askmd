@@ -5,6 +5,7 @@ import type { AskStreamEvent } from './ask';
 import { createAskBridge } from './ask-bridge';
 import { createPalette } from './palette';
 import { createSearch } from './search';
+import { createFindInFile } from './find-in-file';
 import type { SearchHit } from './search';
 import { createFileOps } from './file-ops';
 import { installGlobalKeymap } from './keymap';
@@ -216,7 +217,7 @@ const palette = createPalette((node) => {
   tree.setActive(node.path);
 });
 
-// ─── 全文横断検索 (Cmd+F) ───
+// ─── 全文横断検索 (Cmd+Shift+F) ───
 const search = createSearch(
   async (root, query) =>
     (await invoke('search_markdown', { root, query })) as SearchHit[],
@@ -224,6 +225,9 @@ const search = createSearch(
     void openFile(hit.path, { scrollQuery: query });
   },
 );
+
+// ─── ファイル内検索 (Cmd+F) ───
+const findInFile = createFindInFile({ docContent });
 
 // ─── ファイルを開く ───
 interface OpenOptions {
@@ -415,6 +419,8 @@ function renderDoc(
   header: HTMLElement | null,
 ): void {
   const prevPath = docContent.dataset.path || '';
+  // ファイル切替 or 再レンダで find ハイライトを撤去 (バーは閉じる)
+  findInFile.close();
   // サムネ表示からの切替に備え、先にクラスを剥がす (cached restore 経路もカバー)
   docContent.classList.remove('thumb-grid-host');
   disposeThumbGrid();
@@ -712,7 +718,7 @@ filterInput.addEventListener('keydown', (ev) => {
 
 // ─── グローバルキーボード ───
 installGlobalKeymap({
-  ask, askBridge, palette, search, tree, fileOps,
+  ask, askBridge, palette, search, findInFile, tree, fileOps,
   filterInput, leftPane, treeContainer, docContent,
   toggleSidebar,
   pickAndLoad,

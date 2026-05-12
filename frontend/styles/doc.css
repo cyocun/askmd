@@ -4,15 +4,17 @@
   display: grid;
   /* docHeader を display:none にしても docContent が "header" 行に繰り上がらないよう、
      grid-template-areas で各要素の row を名前で固定する。 */
-  grid-template-rows: auto 1fr;
+  grid-template-rows: auto auto 1fr;
   grid-template-areas:
     "header"
+    "findbar"
     "content";
   min-width: 0;
   min-height: 0;
   overflow: hidden;
 }
 #docHeader { grid-area: header; }
+#findInFileBar { grid-area: findbar; }
 #docContent { grid-area: content; }
 
 #docHeader {
@@ -294,10 +296,12 @@
   background: var(--bg-code);
   padding: 12px 14px;
   border-radius: 6px;
-  overflow-x: auto;
   margin: 0.8em 0;
   border: 1px solid var(--border-subtle);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
+.md-body pre code { white-space: inherit; }
 .code-copy-btn {
   position: absolute;
   top: 6px;

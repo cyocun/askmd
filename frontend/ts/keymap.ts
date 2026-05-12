@@ -12,6 +12,7 @@ import type { Ask } from './ask';
 import type { AskBridge } from './ask-bridge';
 import type { Palette } from './palette';
 import type { Search } from './search';
+import type { FindInFile } from './find-in-file';
 import type { TreeView } from './tree';
 import type { FileOps } from './file-ops';
 
@@ -20,6 +21,7 @@ export interface KeymapDeps {
   askBridge: AskBridge;
   palette: Palette;
   search: Search;
+  findInFile: FindInFile;
   tree: TreeView;
   fileOps: FileOps;
   filterInput: HTMLInputElement;
@@ -114,13 +116,21 @@ export function installGlobalKeymap(deps: KeymapDeps): void {
       void deps.translateCurrentDoc();
       return;
     }
-    if (meta && ev.key.toLowerCase() === 'f') {
+    // Cmd+Shift+F: 全文横断検索 (旧 Cmd+F)
+    if (meta && ev.shiftKey && ev.key.toLowerCase() === 'f') {
       ev.preventDefault();
       if (!state.currentRoot) {
         showToast(t('toast.openDirFirst'));
         return;
       }
       deps.search.open(state.currentRoot.path);
+      return;
+    }
+    // Cmd+F: ファイル内検索 (ブラウザ風)
+    if (meta && !ev.shiftKey && ev.key.toLowerCase() === 'f') {
+      ev.preventDefault();
+      if (!state.currentFile) return;
+      deps.findInFile.open();
       return;
     }
     if (meta && ev.key.toLowerCase() === 'l') {
@@ -145,7 +155,8 @@ export function installGlobalKeymap(deps: KeymapDeps): void {
     }
     if (ev.key === 'Escape') {
       // ask パネルは内部で自身を閉じる
-      if (deps.search.isOpen()) deps.search.close();
+      if (deps.findInFile.isOpen()) deps.findInFile.close();
+      else if (deps.search.isOpen()) deps.search.close();
       else if (deps.palette.isOpen()) deps.palette.close();
       else deps.tree.cancelPendingDelete();
       return;

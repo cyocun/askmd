@@ -1,0 +1,54 @@
+#findInFileBar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  background: var(--bg-surface);
+  border-bottom: 1px solid var(--border-subtle);
+  font-size: 12px;
+}
+#findInFileInput {
+  flex: 1;
+  min-width: 0;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 4px 8px;
+  font-size: 13px;
+  font-family: inherit;
+  outline: none;
+}
+#findInFileInput:focus { border-color: var(--accent, #6ab); }
+#findInFileStatus {
+  color: var(--text-faint);
+  min-width: 56px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.find-in-file-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  background: transparent;
+  color: var(--text-faint);
+  border: 1px solid transparent;
+  border-radius: 4px;
+  cursor: pointer;
+  padding: 0;
+}
+.find-in-file-btn:hover { background: var(--bg-hover); color: var(--text); }
+.find-in-file-btn svg { width: 14px; height: 14px; }
+
+.md-body mark.find-hit {
+  background: rgba(255, 215, 0, 0.45);
+  color: inherit;
+  border-radius: 2px;
+  padding: 0;
+}
+.md-body mark.find-hit-current {
+  background: rgba(255, 140, 0, 0.85);
+  outline: 1px solid rgba(255, 100, 0, 0.9);
+}

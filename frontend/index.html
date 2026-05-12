@@ -18,7 +18,7 @@
       <button id="tbSidebar" class="tb-btn" title="サイドバー (⌘B)">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18"/></svg>
       </button>
-      <button id="tbSearch" class="tb-btn" title="すべてのメモから探す (⌘F)">
+      <button id="tbSearch" class="tb-btn" title="すべてのメモから探す (⌘⇧F)">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="10" cy="10" r="7"/><path d="M21 21l-6-6"/></svg>
       </button>
       <button id="tbPalette" class="tb-btn" title="ファイルを探す (⌘P)">
@@ -61,6 +61,20 @@
   <!-- 右ペイン: レンダリング結果 -->
   <section id="rightPane">
     <header id="docHeader"></header>
+    <!-- ⌘F ファイル内検索バー (docContent の兄弟 = clear の影響を受けない) -->
+    <div id="findInFileBar" hidden>
+      <input id="findInFileInput" type="text" placeholder="このメモから探す…" spellcheck="false" autocomplete="off">
+      <span id="findInFileStatus"></span>
+      <button id="findInFilePrev" class="find-in-file-btn" title="前へ (Shift+Enter)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 15l6-6l6 6"/></svg>
+      </button>
+      <button id="findInFileNext" class="find-in-file-btn" title="次へ (Enter)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6l6 -6"/></svg>
+      </button>
+      <button id="findInFileClose" class="find-in-file-btn" title="閉じる (Esc)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 6l12 12"/><path d="M6 18l12 -12"/></svg>
+      </button>
+    </div>
     <main id="docContent" tabindex="0">
       <div id="emptyState">
         <button id="openBtnLarge" class="btn-primary btn-large">フォルダを開く…</button>
