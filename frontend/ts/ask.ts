@@ -23,6 +23,14 @@ export interface AskStreamEvent {
   message?: string;
 }
 
+/** 引用テキストを本文内で見つけたときのハンドル。 */
+export interface QuoteHighlight {
+  /** ハイライト箇所を画面内へスクロール */
+  scroll(): void;
+  /** ハイライト overlay を消す */
+  cleanup(): void;
+}
+
 export interface AskDeps {
   startStream: (args: {
     requestId: string;
@@ -34,12 +42,13 @@ export interface AskDeps {
   getProviderName: () => string;
   renderMarkdown: (md: string) => string;
   postProcessContent?: (container: HTMLElement) => void;
+  /** コメントカードを積む右列のコンテナ。 */
+  commentsPane: HTMLElement;
+  /** 引用テキストを現在の本文内で探してハイライト。onClick を渡すと overlay がクリック可能になる。 */
+  highlightQuote: (quote: string, onClick?: () => void) => QuoteHighlight | null;
 }
 
 export interface AskOpenOptions {
-  /** 開いた時に呼ばれる。返り値は close 時に呼ばれる cleanup。
-   *  選択範囲のハイライト overlay などの後始末をここで行う。 */
-  onOpen?: () => (() => void) | void;
   /** 入力欄にあらかじめ入れておく文字列。 */
   prefill?: string;
   /** prefill した時に即送信する。 */
@@ -55,6 +64,12 @@ export interface Ask {
   ): void;
   focusLast(): void;
   hasAny(): boolean;
+  /** 最前面 (最後に触った) パネルを閉じる。閉じたら true。Escape の一元処理用。 */
+  closeLast(): boolean;
+  /** ファイル切替/本文再描画時に呼ぶ。現在ファイルのカードだけ出し、引用ハイライトを貼り直す。 */
+  syncForFile(path: string | null): void;
+  /** 本文のサイズ変化 (リサイズ/列開閉) 時に引用ハイライトの位置だけ貼り直す。 */
+  reanchorHighlights(): void;
 }
 
 interface PanelHandle {
@@ -62,17 +77,102 @@ interface PanelHandle {
   input: HTMLInputElement;
   focus(): void;
   submit(): void;
+  close(): void;
+  /** このカードが属するファイル (ファイル単位でコメントを出し分ける)。 */
+  path: string;
+  /** 引用元テキスト (本文ジャンプ用)。ファイル全体への質問では空。 */
+  quote: string;
+  /** 作成時の引用元ブロック (文書順ソート用、再描画後は stale になり得る)。 */
+  anchor: HTMLElement | null;
 }
 
 export function createAsk(deps: AskDeps): Ask {
   const panels: PanelHandle[] = [];
   let lastActive: PanelHandle | null = null;
+  // 表示中カードの引用ハイライト (panel → overlay ハンドル)
+  const highlights = new Map<PanelHandle, QuoteHighlight>();
+  // syncForFile が走っている間に現在対象としているファイル
+  let activePath: string | null = null;
 
   const prunePanels = () => {
     for (let i = panels.length - 1; i >= 0; i--) {
       if (!panels[i].el.isConnected) panels.splice(i, 1);
     }
     if (lastActive && !lastActive.el.isConnected) lastActive = null;
+  };
+
+  const setActive = (h: PanelHandle) => {
+    lastActive = h;
+    for (const p of panels) p.el.classList.toggle('active', p === h);
+  };
+
+  const doClose = (h: PanelHandle) => {
+    const hl = highlights.get(h);
+    if (hl) { hl.cleanup(); highlights.delete(h); }
+    h.el.remove();
+    const idx = panels.indexOf(h);
+    if (idx >= 0) panels.splice(idx, 1);
+    if (lastActive === h) lastActive = panels[panels.length - 1] ?? null;
+    document.body.classList.toggle('has-comments', panels.some((p) => !p.el.hidden));
+  };
+
+  // 引用元へジャンプ (ハイライトが無ければ貼り直してから)
+  const jumpTo = (p: PanelHandle) => {
+    let hl = highlights.get(p);
+    if (!hl && p.quote) {
+      const fresh = deps.highlightQuote(p.quote, () => revealCard(p));
+      if (fresh) { highlights.set(p, fresh); hl = fresh; }
+    }
+    hl?.scroll();
+  };
+
+  // 本文のハイライトをクリックされたとき: 対応するカードをコメント列で見せる
+  const revealCard = (p: PanelHandle) => {
+    setActive(p);
+    p.el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  };
+
+  // anchor の文書順で挿入位置を決める。ファイル全体への質問 (anchor なし) は先頭。
+  // 比較は現在ファイルの生きた anchor 同士 (別ファイルの stale anchor は DISCONNECTED で素通り)。
+  const docOrderIndex = (anchor: HTMLElement | null): number => {
+    if (!anchor) return 0;
+    for (let i = 0; i < panels.length; i++) {
+      const a = panels[i].anchor;
+      if (!a || !a.isConnected) continue;
+      const pos = anchor.compareDocumentPosition(a);
+      if (pos & Node.DOCUMENT_POSITION_FOLLOWING) return i;
+    }
+    return panels.length;
+  };
+
+  // 表示中カードの引用ハイライトを今の本文に貼り直す (位置だけ。並べ替えはしない)。
+  const reanchorHighlights = (): void => {
+    for (const [, hl] of highlights) hl.cleanup();
+    highlights.clear();
+    for (const p of panels) {
+      if (!p.el.hidden && p.quote) {
+        const hl = deps.highlightQuote(p.quote, () => revealCard(p));
+        if (hl) highlights.set(p, hl);
+      }
+    }
+  };
+
+  // 現在ファイルのカードだけ表示し、コメント列へ文書順に並べ、引用ハイライトを貼り直す。
+  const syncForFile = (path: string | null): void => {
+    prunePanels();
+    activePath = path;
+
+    let visible = 0;
+    for (const p of panels) {
+      const show = !!path && p.path === path;
+      p.el.hidden = !show;
+      if (show) {
+        visible++;
+        deps.commentsPane.appendChild(p.el); // 配列順 = 文書順で並べ直す
+      }
+    }
+    reanchorHighlights();
+    document.body.classList.toggle('has-comments', visible > 0);
   };
 
   const openPanel = (
@@ -82,45 +182,28 @@ export function createAsk(deps: AskDeps): Ask {
     options?: AskOpenOptions,
   ): void => {
     prunePanels();
-    let cleanup: (() => void) | undefined;
-    const handle = buildPanel(
-      selection,
-      ctx,
-      deps,
-      (h) => {
-        if (cleanup) cleanup();
-        h.el.remove();
-        const idx = panels.indexOf(h);
-        if (idx >= 0) panels.splice(idx, 1);
-        if (lastActive === h) lastActive = panels[panels.length - 1] ?? null;
-      },
-      (h) => {
-        lastActive = h;
-        for (const p of panels) p.el.classList.toggle('active', p === h);
-      },
-    );
+    const handle = buildPanel(selection, ctx, deps, doClose, setActive);
+    handle.anchor = anchor && anchor.isConnected ? anchor : null;
 
-    if (anchor && anchor.isConnected) {
-      anchor.insertAdjacentElement('afterend', handle.el);
-    } else {
-      handle.el.classList.add('floating');
-      document.body.appendChild(handle.el);
-    }
-    panels.push(handle);
+    const idx = docOrderIndex(handle.anchor);
+    panels.splice(idx, 0, handle);
+
+    // 引用元クリックで本文へジャンプ
+    const quoteEl = handle.el.querySelector('.ask-quote');
+    if (quoteEl) quoteEl.addEventListener('click', () => jumpTo(handle));
+
+    // syncForFile 内の prunePanels に未接続として消されないよう、先に列へ入れておく
+    deps.commentsPane.appendChild(handle.el);
     lastActive = handle;
+    syncForFile(ctx.path); // 並べ替え + 可視化 + ハイライト + has-comments
     for (const p of panels) p.el.classList.toggle('active', p === handle);
 
-    // onOpen は挿入後。getClientRects() が panel で押し下げられた後の位置を拾う必要があるため。
-    if (options?.onOpen) cleanup = options.onOpen() || undefined;
-
-    handle.el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    handle.el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
     handle.input.focus({ preventScroll: true });
 
     if (options?.prefill) {
       handle.input.value = options.prefill;
-      if (options.autoSend) {
-        handle.submit();
-      }
+      if (options.autoSend) handle.submit();
     }
   };
 
@@ -128,15 +211,34 @@ export function createAsk(deps: AskDeps): Ask {
     open: openPanel,
     focusLast() {
       prunePanels();
-      if (lastActive) {
-        lastActive.focus();
-        lastActive.el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      // 現在ファイルで表示中のものを優先
+      const target =
+        (lastActive && !lastActive.el.hidden && lastActive) ||
+        [...panels].reverse().find((p) => !p.el.hidden) ||
+        null;
+      if (target) {
+        target.focus();
+        target.el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
       }
     },
     hasAny() {
       prunePanels();
-      return panels.length > 0;
+      return panels.some((p) => activePath != null && p.path === activePath);
     },
+    closeLast() {
+      prunePanels();
+      const last =
+        (lastActive && !lastActive.el.hidden && lastActive) ||
+        [...panels].reverse().find((p) => !p.el.hidden) ||
+        null;
+      if (last) {
+        last.close();
+        return true;
+      }
+      return false;
+    },
+    syncForFile,
+    reanchorHighlights,
   };
 }
 
@@ -306,12 +408,10 @@ function buildPanel(
     '×',
   );
 
-  const providerLabel = createEl('span', {}, t('ask.askProvider', deps.getProviderName()));
-
+  // タイトル ("Ask Claude") は出さない。継続バッジと閉じるボタンだけの薄いヘッダー。
   const header = createEl(
     'div',
     { class: 'ask-header' },
-    providerLabel,
     badge,
     createEl('span', { class: 'ask-spacer' }),
     closeBtn,
@@ -370,8 +470,6 @@ function buildPanel(
   const TEMPLATES: Array<{ key: string; text: string }> = [
     { key: 'ask.tpl.summarize', text: t('ask.tpl.summarize') },
     { key: 'ask.tpl.explain',   text: t('ask.tpl.explain')   },
-    { key: 'ask.tpl.next',      text: t('ask.tpl.next')      },
-    { key: 'ask.tpl.simple',    text: t('ask.tpl.simple')    },
   ];
   const templates = createEl('div', { class: 'ask-templates' });
   templates.appendChild(createEl('span', { class: 'ask-templates-label' }, t('ask.pickTemplate')));
@@ -379,6 +477,8 @@ function buildPanel(
     const chip = createEl('button', {
       class: 'ask-template-chip',
       onClick: () => {
+        // 送信中 (input.disabled) の連打で同一パネルに二重リクエストが走るのを防ぐ
+        if (input.disabled) return;
         input.value = tpl.text;
         input.focus();
         void send();
@@ -406,6 +506,10 @@ function buildPanel(
     input,
     focus: () => input.focus({ preventScroll: true }),
     submit: () => void send(),
+    close: () => onClose(handle),
+    path: ctx.path,
+    quote: selection,
+    anchor: null,
   };
 
   const send = async () => {
@@ -493,6 +597,9 @@ function buildPanel(
       ev.preventDefault();
       send();
     } else if (ev.key === 'Escape' && !composing) {
+      // ここで閉じるので、グローバル keymap の Escape (closeLast) に伝播させない。
+      // 伝播すると複数パネル時に隣のパネルまで閉じてしまう。
+      ev.stopPropagation();
       onClose(handle);
     }
   });
@@ -526,7 +633,9 @@ function buildPrompt(
   } else {
     parts.push(`対象ドキュメント: "${ctx.title}" (${relPath})`);
   }
-  parts.push('必要に応じて Read / Glob / Grep で周辺ファイル (同ディレクトリの他 .md、参照先など) も読んで答えてください。');
+  // 3 プロバイダ (Claude / Copilot / Codex) とも今やファイルを読めるエージェント型 CLI
+  // なので、特定ツール名に依らない中立な指示にする。
+  parts.push('必要なら同じフォルダの関連する .md も読んで答えてください。');
   parts.push('');
 
   // ファイル全体をコンテキストとして含める

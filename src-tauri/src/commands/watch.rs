@@ -39,10 +39,10 @@ pub async fn start_watch(
         let Ok(event) = res else {
             return;
         };
-        if !matches!(
-            event.kind,
-            EventKind::Modify(_) | EventKind::Create(_) | EventKind::Remove(_)
-        ) {
+        // macOS FSEvents は粒度が粗く、外部編集が Modify ではなく Any / Other
+        // として届くことがある (Dropbox 等の同期フォルダで顕著)。読み取り専用の
+        // Access だけを除外し、それ以外は通して取りこぼしを防ぐ。
+        if matches!(event.kind, EventKind::Access(_)) {
             return;
         }
         let changed: Vec<String> = event

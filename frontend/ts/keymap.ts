@@ -6,7 +6,7 @@ import { showToast } from './toast';
 import { state } from './state';
 import { t } from './i18n';
 import { anchorBlockOf } from './ask-bridge';
-import { openRangeEditor } from './block-editor';
+import { openRangeEditor, isBlockEditorOpen } from './block-editor';
 import { decreaseFontScale, increaseFontScale, resetFontScale } from './font-scale';
 import type { Ask } from './ask';
 import type { AskBridge } from './ask-bridge';
@@ -42,13 +42,21 @@ export function installGlobalKeymap(deps: KeymapDeps): void {
   document.addEventListener('keydown', (ev) => {
     const meta = ev.metaKey || ev.ctrlKey;
 
-    // Quick Look が開いている間は Space/Esc で閉じる (最優先)
+    // 部分編集の CM6 (contenteditable) が開いている間は、グローバルショートカットを
+    // 一切横取りしない。Cmd+Z (undo) / Cmd+S (保存) / Escape / 文字入力は
+    // すべて CM6 自身の keymap が処理する。これをしないと編集中の Cmd+Z が
+    // 削除取り消しに化け、j/k/h/l/Space/矢印 がツリー操作に奪われて打てない。
+    if (isBlockEditorOpen()) return;
+
+    // Quick Look が開いている間はモーダル扱い。Space/Esc で閉じ、それ以外の
+    // キーは飲み込んで裏のツリー/本文を動かさない (j/k で裏が動く・Enter で
+    // 裏のファイルが開く幽霊操作を防ぐ)。
     if (isQuickLookOpen()) {
       if (ev.key === ' ' || ev.key === 'Escape') {
         ev.preventDefault();
         closeQuickLook();
-        return;
       }
+      return;
     }
 
     if (meta && ev.key.toLowerCase() === 'b') {
@@ -154,15 +162,19 @@ export function installGlobalKeymap(deps: KeymapDeps): void {
       return;
     }
     if (ev.key === 'Escape') {
-      // ask パネルは内部で自身を閉じる
+      // 開いている最前面のものを 1 つだけ閉じる。フォーカス位置に依らず
+      // 「Escape で今開いたものが閉じる」を保証する (ask パネルもここで閉じる)。
       if (deps.findInFile.isOpen()) deps.findInFile.close();
       else if (deps.search.isOpen()) deps.search.close();
       else if (deps.palette.isOpen()) deps.palette.close();
+      else if (deps.ask.closeLast()) { /* ask パネルを閉じた */ }
       else deps.tree.cancelPendingDelete();
       return;
     }
 
-    const inInput = ['INPUT', 'TEXTAREA'].includes(document.activeElement?.tagName || '');
+    const ae = document.activeElement as HTMLElement | null;
+    const inInput =
+      !!ae && (['INPUT', 'TEXTAREA'].includes(ae.tagName) || ae.isContentEditable);
 
     // Cmd+Z は input/textarea の native undo を邪魔しないので、そこ以外で削除 undo
     if (meta && ev.key.toLowerCase() === 'z' && !inInput && !ev.shiftKey) {

@@ -31,13 +31,26 @@ pub async fn translate_text(
         target,
     );
 
-    let client = reqwest::Client::new();
+    // 回線断で「翻訳中」のまま固まらないよう必ずタイムアウトを張る
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(10))
+        .build()
+        .map_err(|e| format!("クライアント初期化失敗: {}", e))?;
     let resp = client
         .post(&url)
         .form(&[("q", text.as_str())])
         .send()
         .await
         .map_err(|e| format!("リクエスト失敗: {}", e))?;
+
+    // レート制限 (429) や障害時は Google が HTML を返すため、status を先に見て
+    // 「パース失敗」ではなく意味のあるメッセージにする。
+    if !resp.status().is_success() {
+        return Err(format!(
+            "翻訳サービスが応答しませんでした (HTTP {})。少し待って再試行してください。",
+            resp.status().as_u16()
+        ));
+    }
 
     let body = resp.text().await.map_err(|e| format!("レスポンス読み取り失敗: {}", e))?;
 

@@ -164,12 +164,25 @@ pub async fn trash_file(path: String) -> Result<String, String> {
     .map_err(|e| e.to_string())?
 }
 
-// Undo: メモリスタックに残した path に内容を書き戻す。
+// path に内容を書き込む。Undo (削除の復元) と部分編集の保存で共用する。
+// - overwrite=false (Undo): 復元先に既にファイルがあれば上書きせずエラー。
+//   削除後にその場所へ別ファイルを置いた状態で Undo して破壊する事故を防ぐ。
+// - overwrite=true (編集保存): 既存ファイルを意図的に上書きする。
 // 親ディレクトリが無ければ作る (稀にディレクトリごと消えてるケース)。
 #[tauri::command]
-pub async fn restore_file(path: String, content: String) -> Result<(), String> {
+pub async fn restore_file(
+    path: String,
+    content: String,
+    overwrite: Option<bool>,
+) -> Result<(), String> {
     tauri::async_runtime::spawn_blocking(move || {
         let p = PathBuf::from(&path);
+        if !overwrite.unwrap_or(false) && p.exists() {
+            return Err(format!(
+                "同じ場所に別のファイルがあるため元に戻せません: {}",
+                path
+            ));
+        }
         if let Some(parent) = p.parent() {
             if !parent.exists() {
                 fs::create_dir_all(parent)
@@ -247,6 +260,8 @@ pub async fn duplicate_file(path: String) -> Result<String, String> {
         } else {
             stem.clone()
         };
+        // " copy.md" のような名前で base が空になると先頭スペースのゴミ名になるので退避
+        let base = if base.trim().is_empty() { stem.clone() } else { base };
         let mut candidate = parent.join(format!("{} copy.{}", base, ext));
         let mut n = 2u32;
         while candidate.exists() {

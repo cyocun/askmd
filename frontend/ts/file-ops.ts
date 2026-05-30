@@ -67,6 +67,9 @@ export function createFileOps(deps: FileOpsDeps): FileOps {
     try {
       await invoke('restore_file', { path: last.path, content: last.content });
       showToast(t('toast.restored'));
+      // 復元後の内容で開き直すため、旧描画キャッシュを破棄 (部分編集の undo で必須)
+      state.cache.delete(last.path);
+      state.domCache.delete(last.path);
       await deps.refreshTree();
       // 復元したファイルを開く
       await deps.openFile(last.path);
@@ -87,7 +90,11 @@ export function createFileOps(deps: FileOpsDeps): FileOps {
     }
   }
 
-  async function renameNode(path: string, currentName: string): Promise<void> {
+  async function renameNode(
+    path: string,
+    currentName: string,
+    opts?: { deleteOnCancel?: boolean },
+  ): Promise<void> {
     const newName = await promptText({
       title: t('rename.title'),
       initialValue: currentName,
@@ -99,7 +106,26 @@ export function createFileOps(deps: FileOpsDeps): FileOps {
         return null;
       },
     });
-    if (!newName || newName === currentName) return;
+    // キャンセル時、新規作成直後なら作ったファイルを残さず片付ける
+    if (!newName) {
+      if (opts?.deleteOnCancel) {
+        try {
+          await invoke('trash_file', { path });
+          if (state.currentFile === path) {
+            state.currentFile = null;
+            state.cache.delete(path);
+            state.domCache.delete(path);
+            deps.showEmptyState();
+            deps.updateFileAskBtn();
+          }
+          await deps.refreshTree();
+        } catch {
+          // 片付け失敗は致命的でないので黙って無視
+        }
+      }
+      return;
+    }
+    if (newName === currentName) return;
     try {
       const newPath = (await invoke('rename_file', { path, newName })) as string;
       showToast(t('toast.renamed'));
@@ -121,9 +147,9 @@ export function createFileOps(deps: FileOpsDeps): FileOps {
       const newPath = (await invoke('create_new_markdown', { dir })) as string;
       await deps.refreshTree();
       await deps.openFile(newPath);
-      // 作成直後にすぐ名前を決めてもらう
+      // 作成直後にすぐ名前を決めてもらう。キャンセルしたら untitled.md を残さない。
       const defaultName = newPath.split('/').pop() || 'untitled.md';
-      await renameNode(newPath, defaultName);
+      await renameNode(newPath, defaultName, { deleteOnCancel: true });
     } catch (e) {
       showToast(t('toast.saveFail', String(e)));
     }

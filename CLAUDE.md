@@ -27,14 +27,15 @@
 - **サクサク最優先**: 起動速度、ファイル切り替え速度、キーボード操作で完結すること
 - **キーボードとマウスの両立**: キーボード派の体験を維持しつつ、全機能にマウスでも到達可能に。`↑↓` / `Enter` / `@` / `Cmd+P` / `Cmd+L` などのショートカットは常備
 - **md に絞る**: JSON/YAML/TOML 等は対象外。ツリーにも出さない。隠しディレクトリ (`.git`, `node_modules`, `.obsidian` 等) もスキップ
-- **AI 連携は既存 CLI 流用**: API キー管理はしない。`claude -p` / `gh copilot` / `chatgpt` をサブプロセスで呼ぶ。CLI がなくてもビューア単体で動作
+- **AI 連携は既存 CLI 流用**: API キー管理はしない。`claude -p` / `copilot -p` / `codex exec` をサブプロセスで呼ぶ。CLI がなくてもビューア単体で動作
 - **対象ターゲット**: A=デザイナー/PM (Markdown 書ける、ターミナルは触らない)、B=ライター/リサーチャー (読み主体)。エンジニアは副次対象だが体験を犠牲にしない
 - **表面はシンプル、深部に高度機能 (Progressive Disclosure)**: 非エンジニアは見えている範囲で完結、エンジニアは掘れば全部触れる。機能追加時はまず「前面に出すか奥に隠すか」を判断する
 
 ## AI への質問の仕組み
 
-- デフォルトは **インライン**: 選択 → `Cmd+L` → 選択中のプロバイダの CLI を子プロセス実行 → 右ペイン下部に回答描画
-- 対応プロバイダ: Claude (`claude -p`、構造化ストリーミング)、Copilot (`gh copilot explain`)、ChatGPT (`chatgpt`、stdin 入力)
+- **右コメント列 (Google Docs 風)**: 選択 → `Cmd+L`/選択バー「聞く」→ 選択中のプロバイダ CLI を子プロセス実行 → 右側の `#commentsPane` に Q&A カードを文書順に積む。本文は押し下げない。質問が出ると `body.has-comments` で列展開、ゼロで畳む。カードはファイル単位で出し分け、引用元クリックで本文へジャンプ＋ハイライト (旧インライン挿入は廃止)
+- 対応プロバイダ (いずれもファイル Read 可能なエージェント型 CLI): Claude (`claude -p --output-format stream-json`、構造化ストリーミング＋`--resume` 継続)、Copilot (新単体 `copilot -p <prompt> -s`、旧 `gh copilot` は 2025-10 非推奨)、Codex (`codex exec <prompt>`、旧 `chatgpt` から移行)
+- プロンプト (`ask.ts` buildPrompt): 初回は「全文 (raw md, 最大8000字)＋選択抜粋 (プレーン)＋質問」。選択抜粋は意図的にプレーン (記法は全文側で生きている)。ツール指示はプロバイダ非依存の中立文面。継続は Claude のセッション resume のみ実質機能 (Copilot/Codex も resume はあるが未配線)
 - プロバイダは起動時に `which` で自動検出。複数あればメニューから切替可能。ゼロならビューアモード
 - 将来: ターミナルで開くモード (`osascript` 経由で Terminal/iTerm に `claude` を流す)、Claude Desktop 連携 (現状 deep link でプロンプトプリフィル不可、将来対応)
 
@@ -102,7 +103,7 @@ askmd は「読むが主、書くは補助」。新規作成も画像差し込�
 ### Phase 1.5 (拡張)
 - テーマシステム (GitHub Light/Dark, Solarized Light/Dark)
 - Mermaid ダイアグラム + KaTeX 数式レンダリング
-- AI プロバイダ切替 (Claude / Copilot / ChatGPT)
+- AI プロバイダ切替 (Claude / Copilot / Codex)
 - LLM なしビューアモード (AI 不在時はプロバイダ非表示)
 - 全文横断検索 (`Cmd+F`、tantivy ベースの高速全文検索)
 - Claude 回答ストリーミング

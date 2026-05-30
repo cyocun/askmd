@@ -20,6 +20,7 @@ import { GFM } from '@lezer/markdown';
 import { invoke } from '@tauri-apps/api/core';
 
 import { createEl } from './dom';
+import { state } from './state';
 import { mdHighlightStyle, mdBlockDecorations } from './editor-md-decoration';
 import { tableNavKeymap } from './editor-table-nav';
 import { showToast } from './toast';
@@ -85,6 +86,13 @@ function closeActive(): void {
 
 export interface BlockEditorDeps {
   onSaved?(): void;
+}
+
+// 保存後に呼ぶグローバルコールバック。呼び出し側 (keymap/ask-bridge) は deps を
+// 渡さないため、app 側で一度だけ登録して再描画をフックする。
+let onSavedGlobal: (() => void) | null = null;
+export function setBlockEditorOnSaved(cb: () => void): void {
+  onSavedGlobal = cb;
 }
 
 export async function openRangeEditor(
@@ -169,10 +177,19 @@ export async function openRangeEditor(
     const newBody = body.slice(0, range.from) + edited + body.slice(range.to);
     const newContent = fm + newBody;
     try {
-      await invoke('restore_file', { path, content: newContent });
+      await invoke('restore_file', { path, content: newContent, overwrite: true });
+      // 保存前の全文を undo スタックへ。エディタを閉じた後の ⌘Z で
+      // ファイルごと元に戻せる (削除取り消しと同じ仕組みを共用)。
+      state.deleteUndoStack.push({ path, content });
+      if (state.deleteUndoStack.length > 10) state.deleteUndoStack.shift();
+      // 自分の保存はキャッシュを無効化して即再描画する。watcher 任せにすると
+      // 環境によって反映されない / 遅れるため。
+      state.cache.delete(path);
+      state.domCache.delete(path);
       showToast(t('toast.saved'));
       closeActive();
       deps.onSaved?.();
+      onSavedGlobal?.();
       return true;
     } catch (e) {
       showToast(t('toast.saveFail', String(e)));

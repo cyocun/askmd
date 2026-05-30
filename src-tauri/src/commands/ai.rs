@@ -12,7 +12,7 @@ use tokio::process::Command;
 pub enum ProviderId {
     Claude,
     Copilot,
-    Chatgpt,
+    Codex,
 }
 
 impl ProviderId {
@@ -20,15 +20,17 @@ impl ProviderId {
         match self {
             Self::Claude => "Claude",
             Self::Copilot => "Copilot",
-            Self::Chatgpt => "ChatGPT",
+            Self::Codex => "Codex",
         }
     }
 
     fn command_name(self) -> &'static str {
         match self {
             Self::Claude => "claude",
-            Self::Copilot => "gh",
-            Self::Chatgpt => "chatgpt",
+            // 旧 `gh copilot` 拡張は 2025-10 で非推奨。単体の新 Copilot CLI を見る。
+            Self::Copilot => "copilot",
+            // OpenAI のターミナルツールは codex (旧 chatgpt CLI は実体が曖昧)。
+            Self::Codex => "codex",
         }
     }
 
@@ -44,7 +46,7 @@ impl ProviderId {
     }
 }
 
-const ALL_PROVIDERS: [ProviderId; 3] = [ProviderId::Claude, ProviderId::Copilot, ProviderId::Chatgpt];
+const ALL_PROVIDERS: [ProviderId; 3] = [ProviderId::Claude, ProviderId::Copilot, ProviderId::Codex];
 
 // ───────── Tauri managed state ─────────
 
@@ -147,7 +149,7 @@ pub async fn ask_ai_stream(
     match provider {
         ProviderId::Claude => run_claude(app, request_id, prompt, root, session_id).await,
         ProviderId::Copilot => run_plain_text(app, request_id, prompt, root, provider).await,
-        ProviderId::Chatgpt => run_plain_text(app, request_id, prompt, root, provider).await,
+        ProviderId::Codex => run_plain_text(app, request_id, prompt, root, provider).await,
     }
 }
 
@@ -171,8 +173,10 @@ async fn run_claude(
         .arg("stream-json")
         .arg("--verbose")
         .arg("--exclude-dynamic-system-prompt-sections")
+        // askmd は「読むが主」。質問用途で AI に編集系 (Edit/Write/Bash) を許すと
+        // Dropbox 配下を勝手に書き換える事故になり得るため、読み取り専用ツールに絞る。
         .arg("--allowedTools")
-        .arg("Read,Glob,Grep,Edit,Write,Bash");
+        .arg("Read,Glob,Grep");
     if let Some(sid) = session_id.as_deref() {
         if !sid.is_empty() {
             cmd.arg("--resume").arg(sid);
@@ -180,7 +184,9 @@ async fn run_claude(
     }
     cmd.stdin(Stdio::piped())
         .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
+        .stderr(Stdio::piped())
+        // アプリ終了/future drop 時に子プロセス (claude) を確実に kill して孤児化を防ぐ
+        .kill_on_drop(true);
 
     let mut child = cmd.spawn().map_err(|e| {
         format!(
@@ -208,14 +214,17 @@ async fn run_claude(
 
     let app_clone = app.clone();
     let rid = request_id.clone();
+    // result 行で done/error を emit 済みかを返す。これを見て下の status 判定で
+    // 二重に done/error を飛ばさないようにする。
     let stdout_task = tokio::spawn(async move {
+        let mut saw_result = false;
         let mut reader = BufReader::new(stdout).lines();
         while let Ok(Some(line)) = reader.next_line().await {
             if line.trim().is_empty() {
                 continue;
             }
             match serde_json::from_str::<serde_json::Value>(&line) {
-                Ok(v) => handle_claude_message(&app_clone, &rid, &v),
+                Ok(v) => saw_result |= handle_claude_message(&app_clone, &rid, &v),
                 Err(_) => {
                     let mut ev = StreamEvent::new(&rid, "text");
                     ev.text = Some(line);
@@ -223,6 +232,7 @@ async fn run_claude(
                 }
             }
         }
+        saw_result
     });
 
     let stderr_task = if let Some(err_pipe) = stderr {
@@ -241,12 +251,22 @@ async fn run_claude(
         .await
         .map_err(|e| format!("claude の終了待機に失敗: {}", e))?;
 
-    let _ = stdout_task.await;
+    let saw_result = stdout_task.await.unwrap_or(false);
     let err_text = if let Some(t) = stderr_task {
         t.await.unwrap_or_default()
     } else {
         String::new()
     };
+
+    // result 行で既に done/error を emit している場合は、status ベースの終端を出さない
+    // (正常終了でも exit code 非0 の警告ケースで二重終端になるのを防ぐ)。
+    if saw_result {
+        return if status.success() {
+            Ok(())
+        } else {
+            Err(err_text.trim().to_string())
+        };
+    }
 
     if !status.success() {
         let mut ev = StreamEvent::new(&request_id, "error");
@@ -265,7 +285,7 @@ async fn run_claude(
     Ok(())
 }
 
-// ───────── Plain text モード (Copilot / ChatGPT 等) ─────────
+// ───────── Plain text モード (Copilot / Codex 等) ─────────
 // stdout をそのまま text イベントとして逐次転送。
 // セッション継続・ツール呼び出しはサポートしない。
 
@@ -284,7 +304,8 @@ async fn run_plain_text(
     }
     cmd.stdin(Stdio::piped())
         .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
+        .stderr(Stdio::piped())
+        .kill_on_drop(true);
 
     let label = provider.label();
     let mut child = cmd.spawn().map_err(|e| {
@@ -367,31 +388,35 @@ async fn run_plain_text(
 fn build_plain_command(provider: ProviderId, prompt: &str) -> Command {
     match provider {
         ProviderId::Copilot => {
-            // gh copilot explain "prompt"
-            let mut cmd = Command::new("gh");
-            cmd.arg("copilot").arg("explain").arg(prompt);
+            // 新 Copilot CLI: copilot -p "<prompt>" -s (-s = セッションメタを抑えた素のテキスト出力)
+            let mut cmd = Command::new("copilot");
+            cmd.arg("-p").arg(prompt).arg("-s");
             cmd
         }
-        ProviderId::Chatgpt => {
-            // chatgpt CLI: stdin にプロンプトを渡す
-            Command::new("chatgpt")
+        ProviderId::Codex => {
+            // OpenAI Codex CLI: codex exec "<prompt>" (非対話。--json で ndjson も可だが
+            // ここでは行単位の素テキストを擬似ストリーミングする)
+            let mut cmd = Command::new("codex");
+            cmd.arg("exec").arg(prompt);
+            cmd
         }
         ProviderId::Claude => unreachable!("Claude は run_claude を使う"),
     }
 }
 
-/// stdin 経由でプロンプトを渡すプロバイダーか
+/// stdin 経由でプロンプトを渡すプロバイダーか (現状はどちらも引数渡し)
 fn needs_stdin(provider: ProviderId) -> bool {
     match provider {
-        ProviderId::Copilot => false, // 引数で渡す
-        ProviderId::Chatgpt => true,  // stdin
-        ProviderId::Claude => false,  // run_claude 側で処理
+        ProviderId::Copilot => false,
+        ProviderId::Codex => false,
+        ProviderId::Claude => false, // run_claude 側で処理
     }
 }
 
 // ───────── Claude stream-json パーサー ─────────
 
-fn handle_claude_message(app: &AppHandle, request_id: &str, v: &serde_json::Value) {
+/// 戻り値: result 行を処理して done/error を emit した場合 true。
+fn handle_claude_message(app: &AppHandle, request_id: &str, v: &serde_json::Value) -> bool {
     let typ = v.get("type").and_then(|t| t.as_str()).unwrap_or("");
     match typ {
         "system" => {
@@ -476,7 +501,9 @@ fn handle_claude_message(app: &AppHandle, request_id: &str, v: &serde_json::Valu
                 ev.message = result_text;
                 let _ = app.emit("ask-stream", ev);
             }
+            return true;
         }
         _ => {}
     }
+    false
 }

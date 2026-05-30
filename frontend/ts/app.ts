@@ -2,13 +2,14 @@ import { byId, clear, createEl, insertSanitizedHtml } from './dom';
 import { showToast } from './toast';
 import { createAsk } from './ask';
 import type { AskStreamEvent } from './ask';
-import { createAskBridge } from './ask-bridge';
+import { createAskBridge, highlightQuoteIn } from './ask-bridge';
 import { createPalette } from './palette';
 import { createSearch } from './search';
 import { createFindInFile } from './find-in-file';
 import type { SearchHit } from './search';
 import { createFileOps } from './file-ops';
 import { installGlobalKeymap } from './keymap';
+import { setBlockEditorOnSaved } from './block-editor';
 import { openListOverlay, relativeFromRoot } from './list-overlay';
 import { createTreeView } from './tree';
 import { createTabs } from './tabs';
@@ -66,6 +67,7 @@ const treeContainer = byId('treeContainer');
 const rootLabel = byId('rootLabel');
 const docHeader = byId('docHeader');
 const docContent = byId('docContent');
+const commentsPane = byId('commentsPane');
 const filterInput = byId('filterInput') as HTMLInputElement;
 const dropOverlay = byId('dropOverlay');
 const providerBtn = byId('providerBtn') as HTMLButtonElement;
@@ -113,6 +115,8 @@ const ask = createAsk({
   getProviderName: () => state.activeProviderName,
   renderMarkdown: (md) => render(md),
   postProcessContent: (container) => addCopyButtons(container),
+  commentsPane,
+  highlightQuote: (quote, onClick) => highlightQuoteIn(docContent, quote, onClick),
 });
 
 // ─── Ask UI 配線 (選択バー / 右下ボタン / ask ヘルパ) ───
@@ -128,6 +132,8 @@ const fileOps = createFileOps({
     clear(docHeader);
     clear(docContent);
     docContent.classList.remove('thumb-grid-host');
+    docContent.dataset.path = '';
+    ask.syncForFile(null);
     docContent.appendChild(createEl(
       'div',
       { id: 'emptyState' },
@@ -229,6 +235,21 @@ const search = createSearch(
 // ─── ファイル内検索 (Cmd+F) ───
 const findInFile = createFindInFile({ docContent });
 
+// 大量の md を回遊するのが主用途なので、キャッシュは上限付きで持つ。
+// domCache は detached DOM (重い) なので小さめ、cache は HTML 文字列なので多め。
+const CACHE_LIMIT = 80;
+const DOM_CACHE_LIMIT = 12;
+function setBounded<V>(map: Map<string, V>, key: string, value: V, limit: number): void {
+  // LRU 風: 既存キーは入れ直して最新扱いにし、溢れたら最古を捨てる
+  if (map.has(key)) map.delete(key);
+  map.set(key, value);
+  while (map.size > limit) {
+    const oldest = map.keys().next().value;
+    if (oldest === undefined) break;
+    map.delete(oldest);
+  }
+}
+
 // ─── ファイルを開く ───
 interface OpenOptions {
   // 開いたあと本文内を textContent ベースで検索して scroll + 一時ハイライト
@@ -243,6 +264,8 @@ async function openFile(path: string, options?: OpenOptions): Promise<void> {
 
   const cached = state.cache.get(path);
   if (cached) {
+    // 表示中のファイルが evict されないよう recency を更新
+    setBounded(state.cache, path, cached, CACHE_LIMIT);
     renderDoc(path, cached.title, cached.rendered, cached.fmHtml);
     if (options?.scrollQuery) scrollToQuery(options.scrollQuery);
     askBridge.updateFileAskBtn();
@@ -255,7 +278,7 @@ async function openFile(path: string, options?: OpenOptions): Promise<void> {
     const title = extractTitle(fm.body, fm, filename);
     const rendered = render(fm.body);
     const fmHtml = buildFmHeader(fm, title, path, result.modified);
-    state.cache.set(path, { rendered, title, fmHtml, rawBody: fm.body });
+    setBounded(state.cache, path, { rendered, title, fmHtml, rawBody: fm.body }, CACHE_LIMIT);
     renderDoc(path, title, rendered, fmHtml);
     if (options?.scrollQuery) scrollToQuery(options.scrollQuery);
     askBridge.updateFileAskBtn();
@@ -378,17 +401,20 @@ function saveDomSnapshot(): void {
   const prevPath = docContent.dataset.path || '';
   if (!prevPath) return;
   saveScrollPos(prevPath, docContent.scrollTop);
+  // 引用ハイライト overlay はスナップショットに含めない (復元時に stale で残るため)。
+  // 表示し直す際は ask.syncForFile が貼り直す。
+  docContent.querySelectorAll('.ask-highlight').forEach((el) => el.remove());
   const headerFrag = document.createDocumentFragment();
   while (docHeader.firstChild) headerFrag.appendChild(docHeader.firstChild);
   const bodyFrag = document.createDocumentFragment();
   while (docContent.firstChild) bodyFrag.appendChild(docContent.firstChild);
   const wrapper = createEl('div');
   wrapper.appendChild(bodyFrag);
-  state.domCache.set(prevPath, {
+  setBounded(state.domCache, prevPath, {
     header: headerFrag,
     body: wrapper,
     scrollTop: docContent.scrollTop,
-  });
+  }, DOM_CACHE_LIMIT);
 }
 
 // キャッシュから DOM を復元。成功したら true。
@@ -434,6 +460,8 @@ function renderDoc(
 
   // キャッシュに DOM があればそちらを復元
   if (restoreDomSnapshot(path)) {
+    // 復元した本文に対し、このファイルのコメントと引用ハイライトを貼り直す
+    ask.syncForFile(path);
     return;
   }
 
@@ -486,6 +514,9 @@ function renderDoc(
   processAdmonitions(body);
   addCopyButtons(body);
   void renderMermaidBlocks();
+
+  // このファイルのコメントカードを出し、引用ハイライトを新しい本文に貼り直す
+  ask.syncForFile(path);
 }
 
 // ─── サムネイル一覧 (ルートあり・ファイル未選択のときの右カラム) ───
@@ -506,6 +537,8 @@ async function showThumbnailGrid(): Promise<void> {
   docContent.classList.remove('thumb-grid-host'); // いったん剥がして再付与
   docContent.dataset.path = '';
   docContent.scrollTop = 0;
+  // ファイル未選択ではコメント列を畳む
+  ask.syncForFile(null);
   cleanupThumbGrid = await renderThumbnailGrid(docContent, state.currentRoot.path, (p) => {
     void openFile(p);
     tree.setActive(p);
@@ -737,25 +770,69 @@ docContent.addEventListener('mouseup', () => {
 document.addEventListener('selectionchange', () => askBridge.onSelectionCleared());
 
 // ─── ファイル変更監視 ───
+
+// currentFile を読み直して再描画 (スクロール位置は維持)
+async function reloadCurrentFile(): Promise<void> {
+  if (!state.currentFile) return;
+  const scrollTop = docContent.scrollTop;
+  state.cache.delete(state.currentFile);
+  state.domCache.delete(state.currentFile);
+  await openFile(state.currentFile);
+  docContent.scrollTop = scrollTop;
+}
+
+// 部分編集の保存後は開いているファイルを再描画 (キャッシュは block-editor 側で無効化済み)
+setBlockEditorOnSaved(() => void reloadCurrentFile());
+
+// 引用ハイライトは描画時の px 座標で固定されるため、本文が回り込むとズレる。
+// docContent のサイズ変化 (ウィンドウリサイズ / コメント列の開閉 / サイドバー開閉 /
+// フォントサイズ変更) を ResizeObserver で拾い、rAF スロットルで貼り直す。
+let reanchorScheduled = false;
+const docResizeObserver = new ResizeObserver(() => {
+  if (reanchorScheduled) return;
+  reanchorScheduled = true;
+  requestAnimationFrame(() => {
+    reanchorScheduled = false;
+    ask.reanchorHighlights();
+  });
+});
+docResizeObserver.observe(docContent);
+
 void listen('fs-changed', async (ev) => {
   const paths = ev.payload as string[];
   for (const p of paths) {
     state.cache.delete(p);
     state.domCache.delete(p);
   }
-  if (state.currentFile && paths.includes(state.currentFile)) {
-    const scrollTop = docContent.scrollTop;
-    await openFile(state.currentFile);
-    docContent.scrollTop = scrollTop;
-  }
-  if (state.currentRoot) {
-    const fresh = (await invoke('scan_markdown_tree', { root: state.currentRoot.path })) as TreeNode | null;
-    if (fresh) {
-      state.currentRoot.tree = fresh;
-      tree.render(fresh, state.currentRoot.path);
-      if (state.currentFile) tree.setActive(state.currentFile);
+  if (state.currentFile && paths.includes(state.currentFile)) await reloadCurrentFile();
+  await refreshTree();
+});
+
+// FSEvents が環境によって発火しない場合 (一部の同期フォルダ/ネットワーク FS、
+// エディタの保存方式等) の保険。askmd にフォーカスが戻ったら、開いているファイルを
+// mtime ではなく本文比較で再チェックし、変わっていれば再描画する。ツリーも再スキャン。
+let refreshing = false;
+async function refreshFromDisk(): Promise<void> {
+  if (refreshing) return;
+  refreshing = true;
+  try {
+    if (state.currentFile) {
+      const result = (await invoke('read_markdown', { path: state.currentFile })) as { content: string; modified: number | null };
+      const fm = parseFrontmatter(result.content);
+      const cached = state.cache.get(state.currentFile);
+      // 本文が変わっていれば再描画 (frontmatter のみの変更は読書に影響しないので無視)
+      if (!cached || cached.rawBody !== fm.body) await reloadCurrentFile();
     }
+    await refreshTree();
+  } catch {
+    // 読めない (削除/リネーム途中等) は次の機会に任せる
+  } finally {
+    refreshing = false;
   }
+}
+window.addEventListener('focus', () => void refreshFromDisk());
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden) void refreshFromDisk();
 });
 
 // ─── AI プロバイダー切替メニュー ───
@@ -1089,7 +1166,12 @@ function resetDocToEmpty(): void {
 
 // ─── 起動 ───
 initLang();
-initTheme();
+initTheme(() => {
+  // mermaid は描画済み SVG が旧配色のまま残るため、DOM スナップショットを捨てて
+  // 現在のファイルを描き直す (cache は mermaid ソースを保持しているので再 run で新配色)。
+  state.domCache.clear();
+  void reloadCurrentFile();
+});
 initFontScale();
 
 // HTML 内の静的テキストを i18n 化

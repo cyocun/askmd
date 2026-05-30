@@ -4,6 +4,7 @@
 import { createEl } from './dom';
 import { iconSparkle, iconTranslate, iconSummary, iconCopy, iconPencil } from './icons';
 import { t } from './i18n';
+import { showToast } from './toast';
 
 export interface SelectionBarActions {
   onAsk: () => void;
@@ -45,7 +46,11 @@ export function createSelectionBar(
     btn.addEventListener('click', (ev) => {
       ev.preventDefault();
       ev.stopPropagation();
-      if (opts?.aiOnly && !actions.aiAvailable()) return;
+      // AI 不在時は無反応にせず、なぜ使えないかを伝える
+      if (opts?.aiOnly && !actions.aiAvailable()) {
+        showToast(t('toast.noProvider'));
+        return;
+      }
       handler();
     });
     return btn;

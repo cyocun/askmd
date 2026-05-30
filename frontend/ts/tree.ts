@@ -63,6 +63,21 @@ export function createTreeView(
   let navMode: NavMode = 'file';
   // アウトラインはデフォルト閉じ。→ で展開 (outline mode 移行)、← で折畳
   let outlineExpanded = false;
+  // 直近に render した root path。同一 root の再描画 (外部変更/フォーカス復帰) では
+  // 展開状態と選択を保持し、root が変わった時だけ初期化する。
+  let lastRenderedRoot: string | null = null;
+
+  // tree 内の全ディレクトリ path を集める (消えたフォルダの展開状態を掃除する用)
+  const collectDirPaths = (node: TreeNode | null, acc: Set<string> = new Set()): Set<string> => {
+    if (!node?.children) return acc;
+    for (const c of node.children) {
+      if (c.is_dir) {
+        acc.add(c.path);
+        collectDirPaths(c, acc);
+      }
+    }
+    return acc;
+  };
 
   const visibleRowsForMode = (): Row[] => {
     return rows.filter((r) => {
@@ -272,9 +287,12 @@ export function createTreeView(
   };
 
   const buildDom = () => {
+    // 再構築でスクロール位置がリセットされないよう保持・復元する
+    // (外部変更/フォーカス復帰での再スキャン時に上端へ飛ぶのを防ぐ)
+    const prevScroll = container.scrollTop;
     rows = [];
     clear(container);
-    if (!rootNode || !rootNode.children) return;
+    if (!rootNode || !rootNode.children) { container.scrollTop = prevScroll; return; }
     for (const child of rootNode.children) {
       if (child.is_dir) {
         container.appendChild(buildDirNode(child, 0));
@@ -292,6 +310,7 @@ export function createTreeView(
         }
       }
     }
+    container.scrollTop = prevScroll;
     refreshClasses();
   };
 
@@ -320,20 +339,46 @@ export function createTreeView(
   };
 
   return {
-    render(root, _rootPath) {
+    render(root, rootPath) {
+      const sameRoot = rootPath != null && rootPath === lastRenderedRoot;
+      // 削除/移動で選択が消えた時、先頭ではなく同順位 (= 次の兄弟) を選べるよう、
+      // 再描画前に選択していたファイルの序数を控えておく。
+      const prevFileRows = rows.filter((r) => r.kind === 'file');
+      const prevFileIdx = sameRoot ? prevFileRows.findIndex((r) => r.key === selectedKey) : -1;
       rootNode = root;
-      expanded = new Set();
+      lastRenderedRoot = rootPath;
       outlineItems = [];
       outlineForPath = null;
       pendingDeletePath = null;
       navMode = 'file';
       outlineExpanded = false;
-      if (root?.children) {
-        for (const c of root.children) if (c.is_dir) expanded.add(c.path);
+      if (sameRoot) {
+        // 外部変更/フォーカス復帰での再描画。展開状態を維持しつつ、
+        // 消えたフォルダの分だけ掃除する。
+        const alive = collectDirPaths(root);
+        expanded = new Set([...expanded].filter((p) => alive.has(p)));
+      } else {
+        // 新しい root: トップレベルのフォルダだけ開いた初期状態にする
+        expanded = new Set();
+        selectedKey = null;
+        if (root?.children) {
+          for (const c of root.children) if (c.is_dir) expanded.add(c.path);
+        }
       }
       buildDom();
-      const firstFileRow = rows.find((r) => r.kind === 'file');
-      if (firstFileRow) selectedKey = firstFileRow.key;
+      // 選択は維持。消えていたら、削除前と同順位 (次の兄弟) → 無ければ先頭ファイルへ。
+      if (!selectedKey || !rows.some((r) => r.key === selectedKey)) {
+        const fileRows = rows.filter((r) => r.kind === 'file');
+        if (fileRows.length === 0) {
+          selectedKey = null;
+        } else if (prevFileIdx >= 0) {
+          selectedKey = fileRows[Math.min(prevFileIdx, fileRows.length - 1)].key;
+        } else {
+          selectedKey = fileRows[0].key;
+        }
+      }
+      // 新しい root を開いた時はツリーを先頭に戻す (buildDom は前回位置を保持するため)
+      if (!sameRoot) container.scrollTop = 0;
       refreshClasses();
     },
     setActive(path) {

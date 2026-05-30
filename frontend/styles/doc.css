@@ -246,18 +246,57 @@
   grid-template-columns: minmax(0, 1fr);
   gap: 0;
 }
+/* grid item は既定で min-width:auto (= min-content) のため、折り返せない長い
+   トークンがあると track 幅を破って右にはみ出す。0 にして track 幅まで縮める。 */
+.md-body > * { min-width: 0; }
+/* overflow-wrap は継承されないので、テキストを持つ要素に明示する。
+   anywhere は min-content 計算にも効くので、上の min-width:0 と合わせて
+   長い無空白トークンでも本文が横にはみ出さない (table セルは横スクロールに任せる)。 */
+.md-body p, .md-body li,
+.md-body h1, .md-body h2, .md-body h3, .md-body h4, .md-body h5, .md-body h6,
+.md-body blockquote, .md-body dd, .md-body dt {
+  overflow-wrap: anywhere;
+}
+
 /* 見出しごとのセクション。sticky の入れ替わりを可能にする */
 .md-section {}
 
 /* Ask パネルを開いた時の「引用元」ハイライト。
-   range.getClientRects() の矩形ごとに生成される。pre/コードブロック内も含む。 */
+   range.getClientRects() の矩形ごとに生成される (overlay は JS 側で数 px 余白を持たせて配置)。
+   pre/コードブロック内も含む。 */
 .ask-highlight {
   position: absolute;
-  background: var(--accent-soft);
-  border-radius: 2px;
+  box-sizing: border-box;
+  background: var(--ask-highlight-bg, rgba(255, 196, 0, 0.34));
+  border: 1px solid var(--ask-highlight-border, rgba(255, 196, 0, 0.55));
+  border-radius: 5px;
   pointer-events: none;
   z-index: 1;
 }
+/* ハイライト右肩のクリック用アイコン (対応コメントカードへジャンプ)。
+   本体は pointer-events:none のまま文字選択を邪魔しない。 */
+.ask-highlight-marker {
+  position: absolute;
+  width: 18px;
+  height: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #fff;
+  font-size: 10px;
+  line-height: 1;
+  cursor: pointer;
+  pointer-events: auto;
+  z-index: 2;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+  opacity: 0.85;
+  transition: transform 0.1s ease, opacity 0.1s ease;
+}
+.ask-highlight-marker:hover { opacity: 1; transform: scale(1.12); }
 .md-body h1, .md-body h2, .md-body h3, .md-body h4 {
   color: var(--text);
   font-weight: 600;
@@ -281,7 +320,9 @@
 .md-body p { margin: 0.8em 0; }
 .md-body ul, .md-body ol { padding-left: 1.6em; margin: 0.6em 0; }
 .md-body li { margin: 0.15em 0; }
-.md-body a { color: var(--accent); text-decoration: none; }
+/* 長い URL 等は折り返す。折り返さないと grid cell を破って本文が横に
+   はみ出し、右端で切れて見える (#rightPane の overflow:hidden に当たる)。 */
+.md-body a { color: var(--accent); text-decoration: none; overflow-wrap: anywhere; }
 .md-body a:hover { text-decoration: underline; }
 .md-body blockquote {
   border-left: 3px solid var(--quote-border);
@@ -294,6 +335,8 @@
   padding: 1px 5px;
   border-radius: 3px;
   font-size: 0.9em;
+  /* 空白を含まない長いインラインコードでも折り返して横はみ出しを防ぐ */
+  overflow-wrap: anywhere;
 }
 .md-body pre {
   position: relative;

@@ -107,7 +107,12 @@
   font-weight: 500;
   cursor: pointer;
   box-shadow: 0 6px 18px rgba(0, 0, 0, 0.22);
-  transition: transform 0.1s ease, filter 0.1s ease;
+  transition: right 0.16s ease, transform 0.1s ease, filter 0.1s ease;
+}
+/* コメント列が開いている間は重ならないよう左へ寄せる */
+body.has-comments .file-ask-btn { right: 356px; }
+@media (max-width: 1000px) {
+  body.has-comments .file-ask-btn { right: 296px; }
 }
 .file-ask-btn:hover {
   filter: brightness(1.1);

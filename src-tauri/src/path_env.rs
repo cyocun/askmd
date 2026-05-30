@@ -1,7 +1,7 @@
 // Finder/Spotlight から GUI アプリとして起動された場合、macOS は launchd 経由で
 // 最小 PATH (`/usr/bin:/bin:/usr/sbin:/sbin`) だけを渡す。シェルの rc は読まれない。
 // そのため Homebrew (`/opt/homebrew/bin`) / npm global (`~/.npm-global/bin`) /
-// Volta / Fnm / asdf などの配下にインストールされた CLI (claude, gh, chatgpt)
+// Volta / Fnm / asdf などの配下にインストールされた CLI (claude, copilot, codex)
 // が `which` でヒットせず LLM 機能が無効化されてしまう。
 //
 // ここではユーザーのログインシェルを interactive login mode で叩き、

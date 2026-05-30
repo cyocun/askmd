@@ -8,7 +8,7 @@ import { showLoading as tpLoading, showResult as tpResult, showError as tpError 
 import { openRangeEditor } from './block-editor';
 import { showToast } from './toast';
 import { state } from './state';
-import type { Ask, AskContext } from './ask';
+import type { Ask, AskContext, QuoteHighlight } from './ask';
 import { invoke } from '@tauri-apps/api/core';
 
 const MD_BODY = 'md-body';
@@ -55,23 +55,90 @@ export function askAnchorOf(range: Range): HTMLElement | null {
 
 // 選択 range の各行矩形を .md-body 相対座標の overlay として描画。
 // 質問中の引用元を視覚的に残すため。返り値は cleanup (overlay 除去)。
-export function highlightRange(range: Range): () => void {
+export function highlightRange(range: Range, onClick?: () => void): () => void {
   const mdBody = elementOf(range.startContainer)?.closest(`.${MD_BODY}`) as HTMLElement | null;
   if (!mdBody) return () => {};
 
   const bodyRect = mdBody.getBoundingClientRect();
+  // 行の矩形より少し外へ広げて余白を作る (角丸と相まって目立つ「マーカー」風に)
+  const PAD_X = 4;
+  const PAD_Y = 2.5;
   const overlays: HTMLElement[] = [];
+  let firstRect: DOMRect | null = null;
   for (const r of Array.from(range.getClientRects())) {
     if (r.width < 1 || r.height < 1) continue;
+    if (!firstRect) firstRect = r;
+    // ハイライト本体はクリックを透過させ、下の文字を選択できるようにする
     const el = createEl('div', { class: 'ask-highlight' });
-    el.style.top = `${r.top - bodyRect.top + mdBody.scrollTop}px`;
-    el.style.left = `${r.left - bodyRect.left + mdBody.scrollLeft}px`;
-    el.style.width = `${r.width}px`;
-    el.style.height = `${r.height}px`;
+    el.style.top = `${r.top - bodyRect.top + mdBody.scrollTop - PAD_Y}px`;
+    el.style.left = `${r.left - bodyRect.left + mdBody.scrollLeft - PAD_X}px`;
+    el.style.width = `${r.width + PAD_X * 2}px`;
+    el.style.height = `${r.height + PAD_Y * 2}px`;
     mdBody.appendChild(el);
     overlays.push(el);
   }
+
+  // クリック用は本体ではなく、ハイライトの右肩に小さなアイコンだけ載せる
+  // (本体を pointer-events:auto にすると文字選択を奪うため)。
+  if (onClick && firstRect) {
+    const MARKER = 18;
+    const marker = createEl('button', { class: 'ask-highlight-marker', title: t('ask.jumpToCard') }, '✦');
+    marker.style.top = `${firstRect.top - bodyRect.top + mdBody.scrollTop - PAD_Y - MARKER / 2}px`;
+    marker.style.left = `${firstRect.right - bodyRect.left + mdBody.scrollLeft + PAD_X - MARKER / 2}px`;
+    marker.addEventListener('click', (ev) => { ev.stopPropagation(); onClick(); });
+    mdBody.appendChild(marker);
+    overlays.push(marker);
+  }
+
   return () => overlays.forEach((o) => o.remove());
+}
+
+// 引用テキストの検索キー: 最初の非空行を 80 字まで。複数ブロックをまたぐ選択でも
+// 1 行なら単一テキストノードに収まりやすく、本文ジャンプの足がかりになる。
+function quoteSearchKey(quote: string): string {
+  const firstLine = quote.split('\n').map((s) => s.trim()).find((s) => s.length > 0) || '';
+  return firstLine.slice(0, 80);
+}
+
+// md-body 内のテキストノードから key の最初の出現を Range で返す (大文字小文字無視)。
+function findTextRange(root: HTMLElement, key: string): Range | null {
+  if (!key) return null;
+  const lower = key.toLowerCase();
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  let node = walker.nextNode();
+  while (node) {
+    const text = node.textContent || '';
+    const idx = text.toLowerCase().indexOf(lower);
+    if (idx >= 0) {
+      const range = document.createRange();
+      range.setStart(node, idx);
+      range.setEnd(node, Math.min(idx + key.length, text.length));
+      return range;
+    }
+    node = walker.nextNode();
+  }
+  return null;
+}
+
+// 引用テキストを現在の本文内で探してハイライト。コメントカードの引用元ジャンプ用。
+// 再描画後でもテキスト検索でアンカーし直せるよう、Range ではなく文字列で受ける。
+export function highlightQuoteIn(
+  docContent: HTMLElement,
+  quote: string,
+  onClick?: () => void,
+): QuoteHighlight | null {
+  const mdBody = docContent.querySelector(`.${MD_BODY}`) as HTMLElement | null;
+  if (!mdBody) return null;
+  const range = findTextRange(mdBody, quoteSearchKey(quote));
+  if (!range) return null;
+  const cleanup = highlightRange(range, onClick);
+  const scroll = () => {
+    const r = range.getBoundingClientRect();
+    const cRect = docContent.getBoundingClientRect();
+    const top = docContent.scrollTop + (r.top - cRect.top) - 100;
+    docContent.scrollTo({ top: Math.max(0, top), behavior: 'smooth' });
+  };
+  return { scroll, cleanup };
 }
 
 export interface AskBridgeDeps {
@@ -116,7 +183,6 @@ export function createAskBridge(deps: AskBridgeDeps): AskBridge {
     if (!ctx) { showToast(t('toast.openFile')); return; }
     const anchor = askAnchorOf(range);
     deps.ask.open(selection, ctx, anchor, {
-      onOpen: () => highlightRange(range),
       prefill: opts?.prefill,
       autoSend: opts?.autoSend,
     });

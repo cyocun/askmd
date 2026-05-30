@@ -136,21 +136,34 @@ html, body {
 
 body {
   display: grid;
-  grid-template-columns: 280px 1fr;
+  /* left = 280 / right = 1fr / comments = 0 (質問が出たら has-comments で展開) */
+  grid-template-columns: 280px 1fr 0;
   /* title = 28px (traffic lights + toolbar)
      tabbar = 0 (タブ 1 枚) / 28px (tabs-multiple 時)
      left / right = 1fr */
   grid-template-rows: 28px 0 1fr;
   grid-template-areas:
-    "title  title"
-    "tabbar tabbar"
-    "left   right";
+    "title  title  title"
+    "tabbar tabbar tabbar"
+    "left   right  comments";
+  transition: grid-template-columns 0.16s ease;
 }
 body.tabs-multiple {
   grid-template-rows: 28px 28px 1fr;
 }
+body.has-comments {
+  grid-template-columns: 280px 1fr 340px;
+}
 body.sidebar-collapsed {
-  grid-template-columns: 0 1fr;
+  grid-template-columns: 0 1fr 0;
+}
+body.sidebar-collapsed.has-comments {
+  grid-template-columns: 0 1fr 340px;
+}
+/* 狭い窓ではコメント列を細く */
+@media (max-width: 1000px) {
+  body.has-comments { grid-template-columns: 280px 1fr 280px; }
+  body.sidebar-collapsed.has-comments { grid-template-columns: 0 1fr 280px; }
 }
 body.sidebar-collapsed #leftPane {
   display: none;
