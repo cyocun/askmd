@@ -12,8 +12,9 @@ export interface SelectionBarActions {
   onSummarize: () => void;
   onCopy: () => void;
   onEdit: () => void;
-  // 使用可能判定 (AI が繋がっているか)
-  aiAvailable: () => boolean;
+  // 聞ける状態か (ファイルが開いているか)。CLI 不在でも web 橋渡しがあるので、
+  // AI CLI の有無ではなく「対象ファイルがあるか」で判定する。
+  canAsk: () => boolean;
 }
 
 export interface SelectionBar {
@@ -46,9 +47,9 @@ export function createSelectionBar(
     btn.addEventListener('click', (ev) => {
       ev.preventDefault();
       ev.stopPropagation();
-      // AI 不在時は無反応にせず、なぜ使えないかを伝える
-      if (opts?.aiOnly && !actions.aiAvailable()) {
-        showToast(t('toast.noProvider'));
+      // 対象ファイルが無い時だけ止める (聞く/要約は CLI が無くても web へ橋渡しできる)
+      if (opts?.aiOnly && !actions.canAsk()) {
+        showToast(t('toast.openFile'));
         return;
       }
       handler();
@@ -80,10 +81,10 @@ export function createSelectionBar(
     const rect = range.getBoundingClientRect();
     if (rect.width < 1) { bar.hidden = true; return; }
 
-    // AI が無ければ AI 系ボタンを無効化表示
-    const ai = actions.aiAvailable();
-    askBtn.classList.toggle('disabled', !ai);
-    sumBtn.classList.toggle('disabled', !ai);
+    // 対象ファイルがあれば聞ける (CLI 無しでも web 橋渡しがある)
+    const ok = actions.canAsk();
+    askBtn.classList.toggle('disabled', !ok);
+    sumBtn.classList.toggle('disabled', !ok);
 
     // 一度表示して実寸取得してから位置調整
     bar.hidden = false;

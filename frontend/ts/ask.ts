@@ -614,6 +614,13 @@ function buildPanel(
 // 初回は引用 + ファイル全文 + 周辺参照の指示を付与。resume 継続時は Claude 側が文脈を覚えているので質問のみ。
 const FILE_CONTENT_LIMIT = 8000;
 
+// ルート相対のパス。CLI 用 / web 用どちらのプロンプトでも見出しに使う。
+export function relPathOf(ctx: AskContext): string {
+  return ctx.root && ctx.path.startsWith(ctx.root)
+    ? ctx.path.slice(ctx.root.length).replace(/^\/+/, '')
+    : ctx.path;
+}
+
 function buildPrompt(
   selection: string,
   ctx: AskContext,
@@ -622,9 +629,7 @@ function buildPrompt(
 ): string {
   if (isContinuation) return question;
 
-  const relPath = ctx.root && ctx.path.startsWith(ctx.root)
-    ? ctx.path.slice(ctx.root.length).replace(/^\/+/, '')
-    : ctx.path;
+  const relPath = relPathOf(ctx);
 
   const parts: string[] = [];
 

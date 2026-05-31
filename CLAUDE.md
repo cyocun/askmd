@@ -10,9 +10,19 @@
 - VS Code の Markdown Preview で読めるが、コード以外のノイズが多く「md だけを眺める」専用のUIではない
 - markdown-explorer はコンセプト一致だが 2018 年で開発停止。Electron で古い
 - Ferrite は Rust 製軽量だがエディタが主役。macOS experimental。md 以外も扱う
-- **「md ビューア + 選択範囲を AI に質問」** という組み合わせは既存に空席（MDChat は CLI 特化で GUI ではない）
 
-つまり、**「溜まった md を、静かに速く読みながら、気になった箇所をその場で AI に聞ける GUI」** が存在しない。これが askmd の存在意義。
+### 競合の実態（2026-05 裏取り済み・楽観しないための記録）
+
+単機能で見れば、askmd の要素はどれも既に誰かがやっている。空席なのは「3つの *交差点*」であって単機能ではない。ここを誤認すると差別化を見失う:
+
+- **MacMD Viewer**（2025〜, ネイティブ SwiftUI, $19.99）= ビューア軸の直接競合。read-only 特化・QuickLook・Mermaid・file watching・GFM table まで思想がほぼ一致。**ただし「フォルダをツリーで丸ごと回遊」「md only フィルタ」「AI」を持たない**（単一ファイル閲覧＋Finder QuickLook 中心）
+- **Markdown Monster**（Windows）= AI 軸の競合。**「選択範囲を選んで AI に質問」を既に実装済み**（Current Selection をコンテキスト投入、サイドパネルChat）。よって「md ビューア＋選択範囲を AI に質問」は **もはや純粋な空席ではない**。**ただしエディタが主役・BYOM（API キー自前持ち込み, OpenRouter 推奨）** で、askmd の「キー管理ゼロ・手元の CLI 流用・ビューア純度」とは別物
+- Obsidian の `ai-chat-as-md` プラグイン等も近いが、Obsidian 自体が askmd の定義上避ける「重いノート管理ツール」側
+
+つまり askmd の差別化は単機能ではなく **座標**:
+**「フォルダ丸ごと md だけツリー回遊」×「API キーを一切触らず手元の AI CLI にその場で聞く」×「ネイティブで軽い」** の交差点。MacMD は回遊と AI を欠き、Markdown Monster はビューア純度とキー不要を欠き、Obsidian は軽さと md 特化を欠く。
+
+AI 部分の wedge は「AI と会話できる」ではなく、より具体的に **「API キーを一切触らず、ユーザーが既に持っている claude/copilot/codex をそのまま使える」** に絞ると後発と被らない。なお生きた競合がほぼ居ないのは **① フォルダ回遊 × md-only の「設定ゼロで雑音が消える」** 側で、看板で正面から押すべきはこちら（AI は薬味）。
 
 ## ターゲットユーザー
 
@@ -36,7 +46,10 @@
 - **右コメント列 (Google Docs 風)**: 選択 → `Cmd+L`/選択バー「聞く」→ 選択中のプロバイダ CLI を子プロセス実行 → 右側の `#commentsPane` に Q&A カードを文書順に積む。本文は押し下げない。質問が出ると `body.has-comments` で列展開、ゼロで畳む。カードはファイル単位で出し分け、引用元クリックで本文へジャンプ＋ハイライト (旧インライン挿入は廃止)
 - 対応プロバイダ (いずれもファイル Read 可能なエージェント型 CLI): Claude (`claude -p --output-format stream-json`、構造化ストリーミング＋`--resume` 継続)、Copilot (新単体 `copilot -p <prompt> -s`、旧 `gh copilot` は 2025-10 非推奨)、Codex (`codex exec <prompt>`、旧 `chatgpt` から移行)
 - プロンプト (`ask.ts` buildPrompt): 初回は「全文 (raw md, 最大8000字)＋選択抜粋 (プレーン)＋質問」。選択抜粋は意図的にプレーン (記法は全文側で生きている)。ツール指示はプロバイダ非依存の中立文面。継続は Claude のセッション resume のみ実質機能 (Copilot/Codex も resume はあるが未配線)
-- プロバイダは起動時に `which` で自動検出。複数あればメニューから切替可能。ゼロならビューアモード
+- プロバイダは起動時に `which` で自動検出。複数あればメニューから切替可能
+- **CLI ゼロ時の web 橋渡し (`web-ask.ts`)**: ビューアモードに落とさず、「聞く / 要約 / 右下ボタン」を **ブラウザの ChatGPT / Claude** へ橋渡しする。`buildWebPrompt` が *自己完結* プロンプト (全文インライン同梱・ファイル読み指示なし。web 版はファイルを読めないため CLI 用 `buildPrompt` とは別物) を生成 → クリップボードへコピー → `open_url` で web を開く → ユーザーは ⌘V で貼る。**狙いはデザイナー/PM (ターミナルも API キーも触らない層)**。橋渡し先は毎回ポップオーバーで選ばせ、前回分を `localStorage` (`askmd-web-ask-target`) に記憶。これにより基本方針「API キー管理しない」を破らず、ユーザーの既存 web 契約にそのまま乗る
+- **AI 課金は持たない方針**: askmd 自身が AI をホストして従量課金する案は却下 (バックエンド・在庫リスク・Markdown Monster 的 BYOM 化を招く)。AI はあくまで「ユーザーが既に持っている CLI or web 契約」に乗る薬味。将来 askmd を有料化するなら課金対象は *ビューアの価値* であって AI ではない
+- **API キー直入力 (BYOK) は前面に出さない**: 非エンジニアには壁が高すぎる (アカウント作成→課金登録→キー発行→貼付で大半が離脱)。やるなら Progressive Disclosure で「奥の上級者向けオプション」に留め、初期体験の主役は web 橋渡し
 - 将来: ターミナルで開くモード (`osascript` 経由で Terminal/iTerm に `claude` を流す)、Claude Desktop 連携 (現状 deep link でプロンプトプリフィル不可、将来対応)
 
 ## 編集モデル (2026-04-17 時点の考え方)

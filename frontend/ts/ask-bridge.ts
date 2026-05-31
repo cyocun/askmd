@@ -7,6 +7,7 @@ import { createSelectionBar } from './selection-bar';
 import { showLoading as tpLoading, showResult as tpResult, showError as tpError } from './translate-popover';
 import { openRangeEditor } from './block-editor';
 import { showToast } from './toast';
+import { openWebAsk } from './web-ask';
 import { state } from './state';
 import type { Ask, AskContext, QuoteHighlight } from './ask';
 import { invoke } from '@tauri-apps/api/core';
@@ -178,9 +179,13 @@ export function createAskBridge(deps: AskBridgeDeps): AskBridge {
   }
 
   function askForSelection(selection: string, range: Range, opts?: AskOpenOpts): void {
-    if (!state.aiAvailable) { showToast(t('toast.noProvider')); return; }
     const ctx = currentCtx();
     if (!ctx) { showToast(t('toast.openFile')); return; }
+    // CLI が無ければ web (ChatGPT / Claude) へ橋渡し。autoSend 付き (要約等) は質問確定済み。
+    if (!state.aiAvailable) {
+      openWebAsk({ selection, ctx, question: opts?.autoSend ? opts.prefill : undefined, range });
+      return;
+    }
     const anchor = askAnchorOf(range);
     deps.ask.open(selection, ctx, anchor, {
       prefill: opts?.prefill,
@@ -189,15 +194,18 @@ export function createAskBridge(deps: AskBridgeDeps): AskBridge {
   }
 
   function askForFile(opts?: AskOpenOpts): void {
-    if (!state.aiAvailable) { showToast(t('toast.noProvider')); return; }
     const ctx = currentCtx();
     if (!ctx) { showToast(t('toast.openFile')); return; }
+    if (!state.aiAvailable) {
+      openWebAsk({ selection: '', ctx, question: opts?.autoSend ? opts.prefill : undefined });
+      return;
+    }
     deps.ask.open('', ctx, null, { prefill: opts?.prefill, autoSend: opts?.autoSend });
   }
 
   // 選択フロートバー
   const selectionBar = createSelectionBar({
-    aiAvailable: () => state.aiAvailable && !!state.currentFile,
+    canAsk: () => !!state.currentFile,
     onAsk: () => {
       const sel = window.getSelection();
       const text = sel?.toString() || '';
@@ -256,7 +264,8 @@ export function createAskBridge(deps: AskBridgeDeps): AskBridge {
 
   function updateFileAskBtn(): void {
     const sel = window.getSelection()?.toString().trim() || '';
-    const show = state.aiAvailable && !!state.currentFile && !sel;
+    // CLI 無しでも web 橋渡しで聞けるので、ファイルが開いていれば常時表示
+    const show = !!state.currentFile && !sel;
     fileAskBtn.hidden = !show;
   }
 

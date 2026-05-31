@@ -101,6 +101,23 @@ const translations: Record<string, Record<Lang, string>> = {
   'selbar.summarize': { ja: '要約', en: 'Summarize' },
   'selbar.copy': { ja: 'コピー', en: 'Copy' },
   'selbar.edit': { ja: '編集', en: 'Edit' },
+  // ─ Web 橋渡し (AI CLI が無い時、ブラウザの ChatGPT/Claude へ) ─
+  'webask.head': { ja: 'どこで聞く?', en: 'Ask where?' },
+  'webask.placeholder': { ja: 'このメモについて何を聞く?', en: 'What do you want to ask?' },
+  'webask.chatgpt': { ja: 'ChatGPT で聞く', en: 'Ask in ChatGPT' },
+  'webask.claude': { ja: 'Claude で聞く', en: 'Ask in Claude' },
+  'webask.last': { ja: '前回', en: 'last' },
+  'webask.copiedTitle': { ja: '✓ 質問をコピーしました', en: '✓ Question copied' },
+  'webask.openChatgpt': { ja: 'ChatGPT を開く', en: 'Open ChatGPT' },
+  'webask.openClaude': { ja: 'Claude を開く', en: 'Open Claude' },
+  'webask.pasteHint': {
+    ja: '開いた画面で ⌘V で貼り付け → Enter で送信してください',
+    en: 'In the page that opens, paste with ⌘V and press Enter',
+  },
+  'webask.cliHint': {
+    ja: '💡 Claude / Copilot / Codex の CLI を入れると、ブラウザを使わずこの画面の中で直接やり取りできます',
+    en: '💡 Install the Claude, Copilot, or Codex CLI to chat right here, without a browser',
+  },
   // ─ Block editor (選択範囲のブロックだけを編集) ─
   'block.editing': { ja: 'このブロックだけ編集', en: 'Editing this block' },
   'block.hint': { ja: '⌘S で保存 / Esc でキャンセル', en: '⌘S to save / Esc to cancel' },

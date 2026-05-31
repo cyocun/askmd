@@ -846,7 +846,12 @@ function updateProviderBtnLabel(name: string): void {
 async function initProviderMenu(): Promise<void> {
   try {
     const providers = (await invoke('get_ai_providers')) as AiProviderInfo[];
-    const anyAvailable = providers.some((p) => p.available);
+    // 開発用: CLI が通っていても web 橋渡し (CLI 不在時の体験) を確認するための強制 off。
+    // devtools で localStorage.setItem('askmd-no-cli','1') → リロード。解除は removeItem。
+    const forceNoCli = (() => {
+      try { return localStorage.getItem('askmd-no-cli') === '1'; } catch { return false; }
+    })();
+    const anyAvailable = !forceNoCli && providers.some((p) => p.available);
     state.aiAvailable = anyAvailable;
 
     // AI プロバイダーが 1 つもなければセレクターを隠してビューア専用モード

@@ -170,6 +170,101 @@ body.has-comments .file-ask-btn { right: 356px; }
   animation: spin 0.8s linear infinite;
 }
 
+/* ─────────── Web 橋渡しポップオーバー (AI CLI 不在時) ─────────── */
+.web-ask-popover {
+  position: fixed;
+  z-index: 56;
+  width: 280px;
+  padding: 12px;
+  background: var(--bg-surface, #1c1c1e);
+  color: var(--text, #eee);
+  border: 1px solid var(--border, #333);
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.32);
+  animation: sel-bar-in 0.12s ease;
+}
+.web-ask-popover .web-ask-head {
+  font-size: 11.5px;
+  color: var(--text-faint);
+  margin-bottom: 8px;
+}
+.web-ask-popover .web-ask-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 7px 9px;
+  margin-bottom: 9px;
+  background: var(--bg, #111);
+  color: var(--text, #eee);
+  border: 1px solid var(--border, #333);
+  border-radius: 7px;
+  font-size: 13px;
+  outline: none;
+}
+.web-ask-popover .web-ask-input:focus { border-color: var(--accent); }
+.web-ask-popover .web-ask-targets {
+  display: flex;
+  gap: 8px;
+}
+.web-ask-popover .web-ask-target {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 8px 6px;
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text, #eee);
+  border: 1px solid var(--border, #333);
+  border-radius: 7px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.web-ask-popover .web-ask-target:hover { background: rgba(255, 255, 255, 0.12); }
+.web-ask-popover .web-ask-target.last { border-color: var(--accent); }
+.web-ask-popover .web-ask-last-hint {
+  font-size: 9.5px;
+  color: var(--text-faint);
+  border: 1px solid var(--border-subtle, #444);
+  border-radius: 4px;
+  padding: 0 3px;
+}
+/* ステップ 2 (コピー済み → ブラウザを開く) */
+.web-ask-popover .web-ask-copied {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text, #eee);
+  margin-bottom: 10px;
+}
+.web-ask-popover .web-ask-open {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 9px 6px;
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: 7px;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.web-ask-popover .web-ask-open:hover { filter: brightness(1.12); }
+.web-ask-popover .web-ask-paste-hint {
+  font-size: 11px;
+  color: var(--text-faint);
+  line-height: 1.5;
+  margin-top: 8px;
+}
+/* 共通: CLI を入れれば画面内で使える案内 */
+.web-ask-popover .web-ask-cli-hint {
+  font-size: 10.5px;
+  color: var(--text-faint);
+  line-height: 1.5;
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border-subtle, #333);
+}
+
 /* ─────────── Toast ─────────── */
 #toast {
   position: fixed;
