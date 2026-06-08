@@ -39,11 +39,19 @@ function position(el: HTMLElement, range: Range): void {
   const rect = range.getBoundingClientRect();
   const w = el.offsetWidth || 420;
   const h = el.offsetHeight || 120;
-  let top = rect.bottom + 8;
   let left = rect.left;
   if (left + w > window.innerWidth - 12) left = window.innerWidth - w - 12;
   if (left < 12) left = 12;
-  if (top + h > window.innerHeight - 12) top = rect.top - h - 8;
+  // 縦長 (複数行) の選択だと rect が画面いっぱいに広がり、選択下や選択上に
+  // 置こうとすると top がビューポート外へ飛んでポップオーバーが消える。
+  // 選択下を基本に、入りきらなければ選択上、それも無理なら最終的に
+  // 必ずビューポート内へクランプして「結果が出ない」事故を防ぐ。
+  let top = rect.bottom + 8;
+  if (top + h > window.innerHeight - 12) {
+    const above = rect.top - h - 8;
+    top = above >= 12 ? above : window.innerHeight - h - 12;
+  }
+  if (top < 12) top = 12;
   el.style.top = `${top}px`;
   el.style.left = `${left}px`;
 }
