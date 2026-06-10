@@ -228,9 +228,28 @@ body:not(.has-comments) #commentsPane { display: none; }
   display: grid;
   grid-template-columns: 1fr auto;
   gap: 8px;
+  align-items: end; /* textarea が伸びても送信ボタンは下端に */
 }
 .ask-input:disabled { opacity: 0.6; }
 .ask-send:disabled { opacity: 0.5; cursor: not-allowed; }
+/* 複数行入力 (textarea)。高さは JS の autoGrow が制御する */
+textarea.ask-input {
+  resize: none;
+  overflow-y: auto;
+  max-height: 132px;
+  line-height: 1.5;
+  font-family: inherit;
+}
+/* 実行中は送信ボタンが停止に変わる */
+.ask-send.stop {
+  background: transparent;
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
+}
+.ask-send.stop:hover { color: #e57373; border-color: #e57373; }
+.ask-a-stopped { color: var(--text-secondary); font-size: 12px; }
+/* 複数行の質問は改行を保って表示 */
+.ask-q-text { white-space: pre-wrap; }
 @keyframes pulse { 0%, 100% { opacity: 0.3; } 50% { opacity: 1; } }
 
 /* ─────────── Ask 履歴バー ─────────── */

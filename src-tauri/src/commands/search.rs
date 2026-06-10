@@ -44,7 +44,11 @@ pub async fn search_markdown(root: String, query: String) -> Result<Vec<SearchHi
     }
 
     tauri::async_runtime::spawn_blocking(move || {
-        let mut cache = FILE_CACHE.lock().unwrap();
+        // 別スレッドの panic で poison しても検索自体は続行できる
+        let mut cache = match FILE_CACHE.lock() {
+            Ok(g) => g,
+            Err(poisoned) => poisoned.into_inner(),
+        };
         if !cache.contains_key(&root) {
             cache.insert(root.clone(), build_cache(&root_path));
         }
@@ -53,8 +57,12 @@ pub async fn search_markdown(root: String, query: String) -> Result<Vec<SearchHi
         let q_lower = q.to_lowercase();
         let mut hits = Vec::new();
 
+        // HashMap の順は不定なので、検索のたびに結果順が変わらないよう path 順に固定
+        let mut entries: Vec<(&String, &String)> = fc.files.iter().collect();
+        entries.sort_by(|a, b| a.0.cmp(b.0));
+
         // 全ファイルを行単位で部分文字列マッチ
-        for (path, content) in &fc.files {
+        for (path, content) in entries {
             if hits.len() >= 200 {
                 break;
             }

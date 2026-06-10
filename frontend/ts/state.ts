@@ -9,6 +9,8 @@ export interface DocCacheEntry {
   title: string;
   fmHtml: HTMLElement | null;
   rawBody: string;
+  /** frontmatter が占めるファイル先頭の行数 (検索ヒット行 → body 行の変換用) */
+  fmLines: number;
 }
 
 export interface DomSnapshot {

@@ -46,6 +46,7 @@ fn main() {
             commands::directory::create_new_markdown,
             commands::markdown::read_markdown,
             commands::ai::ask_ai_stream,
+            commands::ai::cancel_ask,
             commands::ai::get_ai_providers,
             commands::ai::get_active_provider,
             commands::ai::set_active_provider,

@@ -254,8 +254,12 @@ export function createTreeView(
         if (!src) return;
         ev.preventDefault();
         ev.stopPropagation();
+        // ツリー再構築の谷間で rows に見つからないことがある。dataTransfer の
+        // パスが正で、移動に必要なのはパスだけなので最小ノードを合成して通す。
         const srcRow = rows.find((r) => r.kind === 'file' && r.node?.path === src);
-        if (srcRow?.node) handlers.onMoveFile!(srcRow.node, node);
+        const srcNode = srcRow?.node
+          ?? { name: src.split('/').pop() || src, path: src, is_dir: false, children: null };
+        handlers.onMoveFile!(srcNode, node);
       });
     }
     rows.push({ kind: 'dir', key: node.path, node, el: headerEl });

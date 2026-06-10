@@ -84,6 +84,8 @@ const translations: Record<string, Record<Lang, string>> = {
   'ask.askProvider': { ja: '{0} に聞く', en: 'Ask {0}' },
   'ask.inputPlaceholder': { ja: '何を聞きますか?', en: 'Ask anything\u2026' },
   'ask.send': { ja: '送信', en: 'Send' },
+  'ask.stop': { ja: '停止', en: 'Stop' },
+  'ask.stopped': { ja: '回答を停止しました', en: 'Stopped' },
   'ask.btn': { ja: '聞く', en: 'Ask' },
   'ask.askFile': { ja: 'このメモについて聞く', en: 'Ask about this note' },
   'ask.pickTemplate': { ja: 'よく使う聞きかた', en: 'Quick prompts' },

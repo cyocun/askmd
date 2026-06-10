@@ -66,7 +66,10 @@ function findRange(
     const start = lineOffset(body, anchor.startLine);
     const end = lineOffset(body, anchor.endLine);
     const idx = body.indexOf(selectedText, start);
-    if (idx >= 0 && idx + selectedText.length <= end) {
+    // 開始位置が anchor 内なら採用。終端は anchor を越えてもよい (複数 block
+    // またぎの選択)。終端まで anchor 内を要求すると全体フォールバックに落ち、
+    // body 前方の同一文字列に誤マッチして違う場所を書き換える危険がある。
+    if (idx >= 0 && idx < end) {
       return { from: idx, to: idx + selectedText.length };
     }
   }
@@ -106,14 +109,21 @@ export async function openRangeEditor(
     return;
   }
 
-  let content: string;
+  let rawContent: string;
   try {
     const result = (await invoke('read_markdown', { path })) as { content: string; modified: number | null };
-    content = result.content;
+    rawContent = result.content;
   } catch (e) {
     showToast(t('toast.readFail', String(e)));
     return;
   }
+
+  // CM6 は LF しか出力しないため、CRLF のまま処理すると編集範囲だけ LF の
+  // 混在ファイルになる。さらに DOM selection は LF なので CRLF の body とは
+  // indexOf が一致せず複数行選択が常にフォールバックしてしまう。
+  // 処理は LF に正規化し、保存時に元の改行コードへ戻す。
+  const hadCrlf = rawContent.includes('\r\n');
+  const content = hadCrlf ? rawContent.replace(/\r\n/g, '\n') : rawContent;
 
   const { fm, body } = splitFrontmatter(content);
 
@@ -175,12 +185,13 @@ export async function openRangeEditor(
       return true;
     }
     const newBody = body.slice(0, range.from) + edited + body.slice(range.to);
-    const newContent = fm + newBody;
+    let newContent = fm + newBody;
+    if (hadCrlf) newContent = newContent.replace(/\n/g, '\r\n');
     try {
       await invoke('restore_file', { path, content: newContent, overwrite: true });
       // 保存前の全文を undo スタックへ。エディタを閉じた後の ⌘Z で
       // ファイルごと元に戻せる (削除取り消しと同じ仕組みを共用)。
-      state.deleteUndoStack.push({ path, content });
+      state.deleteUndoStack.push({ path, content: rawContent });
       if (state.deleteUndoStack.length > 10) state.deleteUndoStack.shift();
       // 自分の保存はキャッシュを無効化して即再描画する。watcher 任せにすると
       // 環境によって反映されない / 遅れるため。

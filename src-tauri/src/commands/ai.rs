@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
+use std::collections::{HashMap, HashSet};
 use std::process::Stdio;
-use std::sync::Mutex;
+use std::sync::{LazyLock, Mutex};
 use tauri::{AppHandle, Emitter, State};
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
 use tokio::process::Command;
@@ -134,6 +135,48 @@ pub fn set_active_provider(
     Ok(())
 }
 
+// ───────── 実行中リクエストの停止 ─────────
+// request_id → 子プロセス pid。フロントの「停止」ボタンから cancel_ask で kill する。
+
+static RUNNING: LazyLock<Mutex<HashMap<String, u32>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
+static CANCELLED: LazyLock<Mutex<HashSet<String>>> =
+    LazyLock::new(|| Mutex::new(HashSet::new()));
+
+fn register_child(request_id: &str, pid: Option<u32>) {
+    if let Some(pid) = pid {
+        if let Ok(mut m) = RUNNING.lock() {
+            m.insert(request_id.to_string(), pid);
+        }
+    }
+}
+
+/// 登録を外し、停止要求が出ていたかを返す
+fn unregister_child(request_id: &str) -> bool {
+    if let Ok(mut m) = RUNNING.lock() {
+        m.remove(request_id);
+    }
+    CANCELLED
+        .lock()
+        .map(|mut s| s.remove(request_id))
+        .unwrap_or(false)
+}
+
+#[tauri::command]
+pub fn cancel_ask(request_id: String) {
+    let pid = RUNNING
+        .lock()
+        .ok()
+        .and_then(|m| m.get(&request_id).copied());
+    if let Some(pid) = pid {
+        if let Ok(mut s) = CANCELLED.lock() {
+            s.insert(request_id);
+        }
+        // SIGTERM。CLI が無視しても kill_on_drop が最終的に始末する
+        let _ = std::process::Command::new("kill").arg(pid.to_string()).status();
+    }
+}
+
 // ───────── 統合ストリームコマンド ─────────
 
 #[tauri::command]
@@ -246,10 +289,15 @@ async fn run_claude(
         None
     };
 
-    let status = child
-        .wait()
-        .await
-        .map_err(|e| format!("claude の終了待機に失敗: {}", e))?;
+    register_child(&request_id, child.id());
+    let status = match child.wait().await {
+        Ok(s) => s,
+        Err(e) => {
+            unregister_child(&request_id);
+            return Err(format!("claude の終了待機に失敗: {}", e));
+        }
+    };
+    let was_cancelled = unregister_child(&request_id);
 
     let saw_result = stdout_task.await.unwrap_or(false);
     let err_text = if let Some(t) = stderr_task {
@@ -258,14 +306,17 @@ async fn run_claude(
         String::new()
     };
 
+    // 停止ボタン経由の終了。フロントは停止時点で UI を確定済みなので何も emit しない
+    if was_cancelled {
+        return Ok(());
+    }
+
     // result 行で既に done/error を emit している場合は、status ベースの終端を出さない
     // (正常終了でも exit code 非0 の警告ケースで二重終端になるのを防ぐ)。
+    // Err を返すと JS 側の catch がもう一度 showError して UI が二重終端になるため、
+    // 終端イベントを emit したら戻り値は常に Ok にする。
     if saw_result {
-        return if status.success() {
-            Ok(())
-        } else {
-            Err(err_text.trim().to_string())
-        };
+        return Ok(());
     }
 
     if !status.success() {
@@ -276,7 +327,7 @@ async fn run_claude(
             err_text.trim()
         ));
         let _ = app.emit("ask-stream", ev);
-        return Err(err_text.trim().to_string());
+        return Ok(());
     }
 
     let mut done = StreamEvent::new(&request_id, "done");
@@ -354,10 +405,15 @@ async fn run_plain_text(
         None
     };
 
-    let status = child
-        .wait()
-        .await
-        .map_err(|e| format!("{} の終了待機に失敗: {}", label, e))?;
+    register_child(&request_id, child.id());
+    let status = match child.wait().await {
+        Ok(s) => s,
+        Err(e) => {
+            unregister_child(&request_id);
+            return Err(format!("{} の終了待機に失敗: {}", label, e));
+        }
+    };
+    let was_cancelled = unregister_child(&request_id);
 
     let _ = stdout_task.await;
     let err_text = if let Some(t) = stderr_task {
@@ -365,6 +421,10 @@ async fn run_plain_text(
     } else {
         String::new()
     };
+
+    if was_cancelled {
+        return Ok(());
+    }
 
     if !status.success() {
         let mut ev = StreamEvent::new(&request_id, "error");
@@ -375,7 +435,8 @@ async fn run_plain_text(
             err_text.trim()
         ));
         let _ = app.emit("ask-stream", ev);
-        return Err(err_text.trim().to_string());
+        // error イベントで通知済み。Err を返すと JS 側 catch で二重表示になる。
+        return Ok(());
     }
 
     let mut done = StreamEvent::new(&request_id, "done");

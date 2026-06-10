@@ -38,6 +38,8 @@ export interface AskDeps {
     root: string;
     sessionId: string | null;
   }) => Promise<void>;
+  /** 実行中のストリームを停止 (子プロセス kill)。 */
+  cancelStream?: (requestId: string) => Promise<void>;
   subscribe: (handler: (ev: AskStreamEvent) => void) => () => void;
   getProviderName: () => string;
   renderMarkdown: (md: string) => string;
@@ -74,7 +76,7 @@ export interface Ask {
 
 interface PanelHandle {
   el: HTMLElement;
-  input: HTMLInputElement;
+  input: HTMLTextAreaElement;
   focus(): void;
   submit(): void;
   close(): void;
@@ -249,6 +251,7 @@ interface TurnHandle {
   hasText(): boolean;
   getAnswerText(): string;
   showError(message: string): void;
+  showStopped(): void;
   finalize(fallbackText?: string): void;
 }
 
@@ -328,6 +331,10 @@ function createTurn(log: HTMLElement, question: string, deps: AskDeps, root: str
       const errEl = createEl('div', { class: 'ask-a error' });
       errEl.textContent = t('ask.error', message);
       aFlow.appendChild(errEl);
+    },
+    showStopped() {
+      aStatus.hidden = true;
+      aFlow.appendChild(createEl('div', { class: 'ask-a-stopped' }, t('ask.stopped')));
     },
     finalize(fallbackText) {
       aStatus.hidden = true;
@@ -450,13 +457,18 @@ function buildPanel(
     }
   }
 
-  const input = createEl('input', {
+  // 複数行で質問できるよう textarea。Enter 送信 / Shift+Enter 改行。
+  const input = createEl('textarea', {
     class: 'ask-input',
-    type: 'text',
+    rows: 1,
     placeholder: t('ask.inputPlaceholder'),
     spellcheck: false,
-    autocomplete: 'off',
-  }) as HTMLInputElement;
+  }) as HTMLTextAreaElement;
+  const autoGrow = () => {
+    input.style.height = 'auto';
+    input.style.height = `${Math.min(input.scrollHeight, 132)}px`;
+  };
+  input.addEventListener('input', autoGrow);
 
   const sendBtn = createEl(
     'button',
@@ -512,17 +524,22 @@ function buildPanel(
     anchor: null,
   };
 
+  // 実行中なら停止関数が入る。送信ボタンは送信⇔停止のトグル。
+  let cancelCurrent: (() => void) | null = null;
+
   const send = async () => {
     const question = input.value.trim();
-    if (!question) return;
+    if (!question || cancelCurrent) return;
 
     // 最初の送信でテンプレート行を隠す (邪魔にならないように)
     templates.hidden = true;
 
     const turn = createTurn(log, question, deps, ctx.root);
     input.value = '';
+    autoGrow();
     input.disabled = true;
-    sendBtn.disabled = true;
+    sendBtn.textContent = t('ask.stop');
+    sendBtn.classList.add('stop');
 
     const requestId =
       typeof crypto !== 'undefined' && crypto.randomUUID
@@ -530,8 +547,10 @@ function buildPanel(
         : `req-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
     const finalizeUi = () => {
+      cancelCurrent = null;
       input.disabled = false;
-      sendBtn.disabled = false;
+      sendBtn.textContent = t('ask.send');
+      sendBtn.classList.remove('stop');
       input.focus({ preventScroll: true });
     };
 
@@ -575,6 +594,16 @@ function buildPanel(
       }
     });
 
+    // 停止: 子プロセスを kill し、途中までの回答を確定して締める。
+    // Rust 側は停止後に何も emit しないので、ここで unsubscribe してよい。
+    cancelCurrent = () => {
+      void deps.cancelStream?.(requestId);
+      unsubscribe();
+      turn.finalize();
+      turn.showStopped();
+      finalizeUi();
+    };
+
     const prompt = buildPrompt(selection, ctx, question, sessionId != null);
     try {
       await deps.startStream({
@@ -590,7 +619,10 @@ function buildPanel(
     }
   };
 
-  sendBtn.addEventListener('click', send);
+  sendBtn.addEventListener('click', () => {
+    if (cancelCurrent) cancelCurrent();
+    else void send();
+  });
   input.addEventListener('keydown', (ev) => {
     const composing = ev.isComposing || ev.keyCode === 229;
     if (ev.key === 'Enter' && !ev.shiftKey && !composing) {
@@ -658,10 +690,15 @@ function buildPrompt(
   }
 
   if (selection) {
+    // 選択にコードフェンスが含まれていても閉じられないよう、含まれる
+    // 最長のバッククォート連続より長いフェンスで囲む
+    const runs = selection.match(/`+/g);
+    const maxRun = runs ? Math.max(...runs.map((s) => s.length)) : 0;
+    const fence = '`'.repeat(Math.max(3, maxRun + 1));
     parts.push('選択部分:');
-    parts.push('```');
+    parts.push(fence);
     parts.push(selection);
-    parts.push('```');
+    parts.push(fence);
     parts.push('');
   }
 

@@ -9,7 +9,8 @@ import { createFindInFile } from './find-in-file';
 import type { SearchHit } from './search';
 import { createFileOps } from './file-ops';
 import { installGlobalKeymap } from './keymap';
-import { setBlockEditorOnSaved } from './block-editor';
+import { isBlockEditorOpen, setBlockEditorOnSaved } from './block-editor';
+import { closeTranslatePopover } from './translate-popover';
 import { openListOverlay, relativeFromRoot } from './list-overlay';
 import { createTreeView } from './tree';
 import { createTabs } from './tabs';
@@ -105,6 +106,9 @@ void listen('ask-stream', (ev) => {
 const ask = createAsk({
   startStream: async (args) => {
     await invoke('ask_ai_stream', args);
+  },
+  cancelStream: async (requestId) => {
+    await invoke('cancel_ask', { requestId });
   },
   subscribe: (h) => {
     askSubscribers.add(h);
@@ -228,7 +232,7 @@ const search = createSearch(
   async (root, query) =>
     (await invoke('search_markdown', { root, query })) as SearchHit[],
   (hit, query) => {
-    void openFile(hit.path, { scrollQuery: query });
+    void openFile(hit.path, { scrollQuery: query, scrollLine: hit.line });
   },
 );
 
@@ -254,6 +258,11 @@ function setBounded<V>(map: Map<string, V>, key: string, value: V, limit: number
 interface OpenOptions {
   // 開いたあと本文内を textContent ベースで検索して scroll + 一時ハイライト
   scrollQuery?: string;
+  // 検索ヒットのファイル行番号 (1-based)。data-lines で該当ブロックを特定して
+  // 同語の別出現ではなくヒット行付近へ正確にジャンプするために使う
+  scrollLine?: number;
+  // localStorage の保存済みスクロール位置を復元しない (呼び出し側が位置を制御する時)
+  skipSavedScroll?: boolean;
 }
 async function openFile(path: string, options?: OpenOptions): Promise<void> {
   state.currentFile = path;
@@ -262,12 +271,23 @@ async function openFile(path: string, options?: OpenOptions): Promise<void> {
   // 一定時間開いていたら既読化してドットを消す (途中で切り替えたらキャンセル)
   scheduleMarkViewed(path, (p) => tree.refreshUpdatedDot(p));
 
+  // 検索ジャンプ時は保存済みスクロール位置の復元と競合する (rAF が後から
+  // 上書きしてジャンプ先に届かない) ので復元を抑止する
+  const skipSavedScroll = !!options?.skipSavedScroll || !!options?.scrollQuery;
+
+  // 検索ヒットのファイル行番号 → body 行番号 (0-based)。frontmatter 行数を引く。
+  const bodyLineOf = (fmLines: number): number | undefined => {
+    if (options?.scrollLine == null) return undefined;
+    const l = options.scrollLine - 1 - fmLines;
+    return l >= 0 ? l : undefined;
+  };
+
   const cached = state.cache.get(path);
   if (cached) {
     // 表示中のファイルが evict されないよう recency を更新
     setBounded(state.cache, path, cached, CACHE_LIMIT);
-    renderDoc(path, cached.title, cached.rendered, cached.fmHtml);
-    if (options?.scrollQuery) scrollToQuery(options.scrollQuery);
+    renderDoc(path, cached.title, cached.rendered, cached.fmHtml, skipSavedScroll);
+    if (options?.scrollQuery) scrollToQuery(options.scrollQuery, bodyLineOf(cached.fmLines));
     askBridge.updateFileAskBtn();
     return;
   }
@@ -278,50 +298,83 @@ async function openFile(path: string, options?: OpenOptions): Promise<void> {
     const title = extractTitle(fm.body, fm, filename);
     const rendered = render(fm.body);
     const fmHtml = buildFmHeader(fm, title, path, result.modified);
-    setBounded(state.cache, path, { rendered, title, fmHtml, rawBody: fm.body }, CACHE_LIMIT);
-    renderDoc(path, title, rendered, fmHtml);
-    if (options?.scrollQuery) scrollToQuery(options.scrollQuery);
+    // body は content の末尾部分なので、差分の改行数 = frontmatter の行数
+    const fmLines = result.content.length > fm.body.length
+      ? result.content.slice(0, result.content.length - fm.body.length).split('\n').length - 1
+      : 0;
+    setBounded(state.cache, path, { rendered, title, fmHtml, rawBody: fm.body, fmLines }, CACHE_LIMIT);
+    renderDoc(path, title, rendered, fmHtml, skipSavedScroll);
+    if (options?.scrollQuery) scrollToQuery(options.scrollQuery, bodyLineOf(fmLines));
     askBridge.updateFileAskBtn();
   } catch (e) {
     showToast(t('toast.readFail', String(e)));
   }
 }
 
-// 描画後の docContent 内で query を textContent ベースに最初の出現へスクロール + 一時ハイライト。
-// 行番号ベースでないのは、レンダ後の DOM に行番号が載らない (markdown-it のトークン map を使ってない) ため。
-// 実用的にはクエリ文字列で十分ジャンプできる。
-function scrollToQuery(query: string): void {
+// 描画後の docContent 内で query の出現へスクロール + 一時ハイライト。
+// bodyLine (0-based、frontmatter 除外後) があれば data-lines でヒット行を含む
+// block を特定し、そのスコープ内を優先して探す。これで同語の別出現に飛ばない。
+// block 内でクエリが見つからない場合 (記法でテキストノードが分断、ソース記法に
+// マッチした等) でも block 自体へスクロールするので「無反応」にならない。
+function scrollToQuery(query: string, bodyLine?: number): void {
   const q = query.trim();
   if (!q) return;
   const body = docContent.querySelector('.md-body') as HTMLElement | null;
   if (!body) return;
-  const walker = document.createTreeWalker(body, NodeFilter.SHOW_TEXT);
-  const qLower = q.toLowerCase();
-  let node: Node | null = walker.nextNode();
-  while (node) {
-    const text = (node as Text).textContent || '';
-    const idx = text.toLowerCase().indexOf(qLower);
-    if (idx >= 0) {
-      const range = document.createRange();
-      range.setStart(node, idx);
-      range.setEnd(node, idx + q.length);
-      const rect = range.getBoundingClientRect();
-      const bodyRect = body.getBoundingClientRect();
-      const containerRect = docContent.getBoundingClientRect();
-      const targetTop = docContent.scrollTop + (rect.top - containerRect.top) - 120;
-      docContent.scrollTo({ top: Math.max(0, targetTop), behavior: 'smooth' });
-      // 一時ハイライト (2.4 秒でフェード)
-      const overlay = createEl('div', { class: 'search-jump-highlight' });
-      overlay.style.top = `${rect.top - bodyRect.top + body.scrollTop}px`;
-      overlay.style.left = `${rect.left - bodyRect.left + body.scrollLeft}px`;
-      overlay.style.width = `${rect.width}px`;
-      overlay.style.height = `${rect.height}px`;
-      body.appendChild(overlay);
-      setTimeout(() => overlay.remove(), 2500);
-      return;
-    }
-    node = walker.nextNode();
+
+  const scrollAndFlash = (rect: DOMRect) => {
+    const bodyRect = body.getBoundingClientRect();
+    const containerRect = docContent.getBoundingClientRect();
+    const targetTop = docContent.scrollTop + (rect.top - containerRect.top) - 120;
+    docContent.scrollTo({ top: Math.max(0, targetTop), behavior: 'smooth' });
+    // 一時ハイライト (2.4 秒でフェード)
+    const overlay = createEl('div', { class: 'search-jump-highlight' });
+    overlay.style.top = `${rect.top - bodyRect.top + body.scrollTop}px`;
+    overlay.style.left = `${rect.left - bodyRect.left + body.scrollLeft}px`;
+    overlay.style.width = `${rect.width}px`;
+    overlay.style.height = `${rect.height}px`;
+    body.appendChild(overlay);
+    setTimeout(() => overlay.remove(), 2500);
+  };
+
+  // ヒット行を含む block (一番内側に当たったもの) をスコープにする
+  let scope: HTMLElement = body;
+  if (bodyLine != null) {
+    body.querySelectorAll<HTMLElement>('[data-lines]').forEach((el) => {
+      const [s, e] = (el.getAttribute('data-lines') || '').split(',').map(Number);
+      if (!Number.isNaN(s) && !Number.isNaN(e) && bodyLine >= s && bodyLine < e) {
+        scope = el; // querySelectorAll は文書順なのでネストした内側が後勝ち
+      }
+    });
   }
+
+  const findIn = (root: HTMLElement): Range | null => {
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    const qLower = q.toLowerCase();
+    let node: Node | null = walker.nextNode();
+    while (node) {
+      const text = (node as Text).textContent || '';
+      const idx = text.toLowerCase().indexOf(qLower);
+      if (idx >= 0) {
+        const range = document.createRange();
+        range.setStart(node, idx);
+        // toLowerCase で長さが変わる Unicode があるため node 長でクランプ
+        range.setEnd(node, Math.min(text.length, idx + q.length));
+        return range;
+      }
+      node = walker.nextNode();
+    }
+    return null;
+  };
+
+  const range = findIn(scope);
+  if (range) {
+    scrollAndFlash(range.getBoundingClientRect());
+  } else if (scope !== body) {
+    // block 内でクエリ不一致 (記法分断 / ソース記法へのマッチ) → block ごと示す
+    scrollAndFlash(scope.getBoundingClientRect());
+  }
+  // scope が body 全体で不一致なら何もしない (従来挙動)
 }
 
 function relativePath(absPath: string): string {
@@ -443,10 +496,13 @@ function renderDoc(
   _title: string,
   renderedHtml: string,
   header: HTMLElement | null,
+  skipSavedScroll = false,
 ): void {
   const prevPath = docContent.dataset.path || '';
   // ファイル切替 or 再レンダで find ハイライトを撤去 (バーは閉じる)
   findInFile.close();
+  // 選択翻訳ポップオーバーは旧本文の Range を握っているので一緒に閉じる
+  closeTranslatePopover();
   // サムネ表示からの切替に備え、先にクラスを剥がす (cached restore 経路もカバー)
   docContent.classList.remove('thumb-grid-host');
   disposeThumbGrid();
@@ -477,9 +533,11 @@ function renderDoc(
   docContent.dataset.path = path;
   docContent.scrollTop = 0;
   // 保存済みスクロール位置の復元 (DOM レイアウト確定後)
-  const savedScroll = loadScrollPos(path);
-  if (savedScroll != null && savedScroll > 0) {
-    requestAnimationFrame(() => { docContent.scrollTop = savedScroll; });
+  if (!skipSavedScroll) {
+    const savedScroll = loadScrollPos(path);
+    if (savedScroll != null && savedScroll > 0) {
+      requestAnimationFrame(() => { docContent.scrollTop = savedScroll; });
+    }
   }
 
   // 画像の相対パスを asset URL に解決
@@ -557,6 +615,11 @@ async function loadRoot(path: string, opts?: { skipTabUpdate?: boolean }): Promi
     state.currentRoot = { path, tree: node };
     rootLabel.textContent = node.name;
     rootLabel.title = path;
+    // 前のフォルダで使った @ 絞り込みが残ると新しいツリーが空に見える
+    if (filterInput.value) {
+      filterInput.value = '';
+      tree.applyFilter('');
+    }
     try { await getCurrentWebviewWindow().setTitle(node.name || 'askmd'); } catch {}
     // タブ側のラベル / rootPath を同期。skipTabUpdate=true はタブ切替中の
     // 無限ループ防止で付与される (onSwitchTo → loadRoot → updateActive → render...)
@@ -777,7 +840,9 @@ async function reloadCurrentFile(): Promise<void> {
   const scrollTop = docContent.scrollTop;
   state.cache.delete(state.currentFile);
   state.domCache.delete(state.currentFile);
-  await openFile(state.currentFile);
+  // skipSavedScroll: localStorage の保存位置を rAF で復元されると、下の代入が
+  // 先に走ったあと上書きされて今の読書位置からズレる
+  await openFile(state.currentFile, { skipSavedScroll: true });
   docContent.scrollTop = scrollTop;
 }
 
@@ -804,7 +869,11 @@ void listen('fs-changed', async (ev) => {
     state.cache.delete(p);
     state.domCache.delete(p);
   }
-  if (state.currentFile && paths.includes(state.currentFile)) await reloadCurrentFile();
+  // mini editor で編集中は本文を再構築しない。editor が持つ offset range が
+  // 古い本文を指したまま ⌘S すると外部変更を巻き戻して上書きしてしまう。
+  if (state.currentFile && paths.includes(state.currentFile) && !isBlockEditorOpen()) {
+    await reloadCurrentFile();
+  }
   await refreshTree();
 });
 
@@ -816,7 +885,7 @@ async function refreshFromDisk(): Promise<void> {
   if (refreshing) return;
   refreshing = true;
   try {
-    if (state.currentFile) {
+    if (state.currentFile && !isBlockEditorOpen()) {
       const result = (await invoke('read_markdown', { path: state.currentFile })) as { content: string; modified: number | null };
       const fm = parseFrontmatter(result.content);
       const cached = state.cache.get(state.currentFile);
@@ -993,15 +1062,21 @@ docContent.addEventListener('mouseover', (ev) => {
   const original = target.getAttribute('data-original-text');
   if (!original) return;
   translateTooltip.textContent = original;
+  // hidden のままだと offsetHeight が 0 になり上方向表示の位置計算が壊れる。
+  // 一旦不可視で実寸を測ってから位置を確定する。
+  translateTooltip.style.visibility = 'hidden';
+  translateTooltip.hidden = false;
   const rect = target.getBoundingClientRect();
   let top = rect.bottom + 6;
   let left = rect.left;
-  if (top + 180 > window.innerHeight) top = rect.top - translateTooltip.offsetHeight - 6;
+  if (top + translateTooltip.offsetHeight > window.innerHeight - 8) {
+    top = rect.top - translateTooltip.offsetHeight - 6;
+  }
   if (left + 420 > window.innerWidth) left = window.innerWidth - 420 - 8;
   if (left < 8) left = 8;
   translateTooltip.style.top = `${top}px`;
   translateTooltip.style.left = `${left}px`;
-  translateTooltip.hidden = false;
+  translateTooltip.style.visibility = '';
 });
 
 docContent.addEventListener('mouseout', (ev) => {
@@ -1053,13 +1128,36 @@ async function translateCurrentDoc(): Promise<void> {
 
   // 各ブロックを1行に潰して \n で結合。Translate API は改行を保持するので分割可能
   const lines = blocks.map((b) => b.innerText.trim().replace(/\n+/g, ' '));
-  const joined = lines.join('\n');
+
+  // 非公式 API は一度に送れる量に限りがあるため、行単位で ~6000 字ずつに
+  // 分割して順次リクエストする (以前は 8000 字で切り捨てて後半が未翻訳だった)
+  const CHUNK_LIMIT = 6000;
+  const chunks: string[] = [];
+  {
+    let cur: string[] = [];
+    let curLen = 0;
+    for (const raw of lines) {
+      const line = raw.length > CHUNK_LIMIT ? raw.slice(0, CHUNK_LIMIT) : raw;
+      if (cur.length && curLen + line.length + 1 > CHUNK_LIMIT) {
+        chunks.push(cur.join('\n'));
+        cur = [];
+        curLen = 0;
+      }
+      cur.push(line);
+      curLen += line.length + 1;
+    }
+    if (cur.length) chunks.push(cur.join('\n'));
+  }
 
   try {
-    const translated = (await invoke('translate_text', {
-      text: joined.slice(0, 8000),
-    })) as string;
-    const parts = translated.split('\n');
+    const parts: string[] = [];
+    for (let ci = 0; ci < chunks.length; ci++) {
+      if (btn && chunks.length > 1) {
+        btn.textContent = `${t('translate.loading')} ${ci + 1}/${chunks.length}`;
+      }
+      const translated = (await invoke('translate_text', { text: chunks[ci] })) as string;
+      parts.push(...translated.split('\n'));
+    }
 
     const count = Math.min(blocks.length, parts.length);
     for (let i = 0; i < count; i++) {

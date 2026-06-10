@@ -28,8 +28,9 @@ function genId(): string {
 export function createTabs(container: HTMLElement, deps: TabsDeps) {
   const tabs: Tab[] = [];
   let activeId: string | null = null;
-  // 切替中の重複発火を抑止
-  let switching = false;
+  // 切替は直列化する。フラグで「捨てる」と、切替中にタブを閉じた時に
+  // activeId が削除済みタブを指したまま render されず UI が固まる。
+  let switchChain: Promise<void> = Promise.resolve();
 
   function render(): void {
     clear(container);
@@ -91,20 +92,19 @@ export function createTabs(container: HTMLElement, deps: TabsDeps) {
     return t;
   }
 
-  async function switchTo(id: string): Promise<void> {
-    if (switching) return;
+  async function doSwitch(id: string): Promise<void> {
     if (activeId === id) { render(); return; }
     const target = tabs.find((t) => t.id === id);
-    if (!target) return;
+    if (!target) { render(); return; }
     const prev = activeId ? tabs.find((t) => t.id === activeId) ?? null : null;
-    switching = true;
-    try {
-      activeId = id;
-      render();
-      await deps.onSwitchTo(target, prev);
-    } finally {
-      switching = false;
-    }
+    activeId = id;
+    render();
+    await deps.onSwitchTo(target, prev);
+  }
+
+  function switchTo(id: string): Promise<void> {
+    switchChain = switchChain.then(() => doSwitch(id)).catch(() => {});
+    return switchChain;
   }
 
   async function closeTab(id: string): Promise<void> {

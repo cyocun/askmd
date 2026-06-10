@@ -155,7 +155,8 @@ export function installGlobalKeymap(deps: KeymapDeps): void {
       }
       return;
     }
-    if (ev.key === '@' && document.activeElement?.tagName !== 'INPUT') {
+    const focusTag = document.activeElement?.tagName;
+    if (ev.key === '@' && focusTag !== 'INPUT' && focusTag !== 'TEXTAREA') {
       ev.preventDefault();
       deps.filterInput.focus();
       deps.filterInput.select();
